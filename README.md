@@ -6,10 +6,13 @@ This is a Custom Component for Home-Assistant (https://home-assistant.io) reads 
 
 <ins>Manual:</ins>
 
-Copy directory custom_components/idokep to your <config dir>/custom_components directory.
-Restart Home-Assistant.
-Add new integration in Home Assistant under Settings -> Devices & services.
-Enter the name of location in configuration window. (It shall be the same to the end string of URL in web browser when you get the forecast data)
+- Copy directory idokep to your <config dir>/custom_components directory.
+
+- Restart Home-Assistant
+
+- Add new integration in Home Assistant under Settings -> Devices & services
+
+- Enter the name of location in configuration window. (It shall be the same to the end string of URL in web browser when you get the forecast data)
     e.g.: **Pécs**  (https://www.idokep.hu/elorejelzes/Pécs)
 
 ## How it works
