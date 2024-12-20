@@ -80,7 +80,7 @@ weather_conditions = {
  'jégeső': 'hail',
  'havazás': 'snowy',
  'hószállingózás': 'snowy',
- 'havaseső': 'snowy-rainy',
+ 'havas eső': 'snowy-rainy',
  'fagyott eső': 'snowy-rainy',
  'szeles': 'windy',
 #Not mapped 
