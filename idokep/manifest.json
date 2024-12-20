@@ -1,10 +1,10 @@
 {
-  "domain": "IdokepWeather",
+  "domain": "idokep",
   "name": "Idokep Weather",
   "codeowners": ["@rinyakok"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "",
+  "documentation": "https://github.com/rinyakok/homeassistant_idokep",
   "iot_class": "cloud_polling",
   "issue_tracker": "",
   "requirements": ["bs4>=0.0.2", "requests>2.0.0", "aiohttp>3.10.0"],
