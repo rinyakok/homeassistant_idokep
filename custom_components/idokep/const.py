@@ -20,7 +20,7 @@ from homeassistant.components.weather import (
 )
 from homeassistant.const import Platform
 
-DOMAIN = "IdokepWeather"
+DOMAIN = "idokep"
 DEFAULT_NAME = "IdokepWeather"
 DEFAULT_LANGUAGE = "en"
 ATTRIBUTION = "Data provided by Idokep.hu"
