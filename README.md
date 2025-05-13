@@ -4,9 +4,23 @@ This is a Custom Component for Home-Assistant (https://home-assistant.io) reads 
 
 ## Installation
 
-<ins>Manual:</ins>
+<ins>Downloading by HACS:</ins>
+
+Using HACS is the quickest way to download this integration.
+ - On HACS page, search for Időkép, and select Időkép Weather Component to download.
+
+![kép](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
+
+or alternatively you may manual copy the component folder to HA
+
+<ins>Manual copy:</ins>
 
 - Copy directory idokep to your <config dir>/custom_components directory.
+
+
+<ins> Add Integration </ins>
+
+Once Időkép component downloaded, follow these steps to integrate and configure it.
 
 - Restart Home-Assistant
 
