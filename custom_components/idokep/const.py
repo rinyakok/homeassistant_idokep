@@ -53,6 +53,7 @@ ATTR_API_FORECAST = "forecast"
 ATTR_API_CURRENT = "current"
 ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
+ATTR_UID = "IdokepWeatherUID"
 UPDATE_LISTENER = "update_listener"
 PLATFORMS = [Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"

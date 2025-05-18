@@ -47,7 +47,8 @@ def build_data_and_options(combined_data: dict[str, Any],) -> tuple[dict[str, An
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
-    """Set up OpenWeatherMap as config entry."""
+    """Set up IdokepWeather as config entry."""
+    _LOGGER.debug("ENTRY: %s", str(entry))
     name = entry.data[CONF_NAME]
     location = entry.data.get(ATTR_API_LOCATION)
 
@@ -92,6 +93,9 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options."""
     await hass.config_entries.async_reload(entry.entry_id)
 
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update listener."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepData) -> bool:
     """Unload a config entry."""
