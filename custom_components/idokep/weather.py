@@ -31,6 +31,7 @@ from .const import (
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
     ATTR_API_HOURLY_FORECAST,
+    ATTR_API_LOCATION,
     ATTR_API_HUMIDITY,
     ATTR_API_PRESSURE,
     ATTR_API_TEMPERATURE,
@@ -39,6 +40,7 @@ from .const import (
     ATTR_API_WIND_GUST,
     ATTR_API_WIND_SPEED,
     ATTRIBUTION,
+    ATTR_FORECAST_NAME,
     DEFAULT_NAME,
     DOMAIN,
     MANUFACTURER,
@@ -52,11 +54,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     """Set up Idokep weather entity based on a config entry."""
     domain_data = config_entry.runtime_data
     name = domain_data.name
+    location = config_entry.data.get(ATTR_API_LOCATION)
 
     weather_coordinator = domain_data.coordinator
 
     unique_id = f"{config_entry.unique_id}"
-    idokep_weather = IdokepWeather(name, unique_id,weather_coordinator)
+    idokep_weather = IdokepWeather(f"{location}_{ATTR_FORECAST_NAME}", unique_id,weather_coordinator)
 
     async_add_entities([idokep_weather], False)
 

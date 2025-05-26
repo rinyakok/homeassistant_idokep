@@ -31,6 +31,7 @@ from .const import (
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
     ATTR_API_WEATHER,
+    ATTR_API_LOCATION,
     ATTRIBUTION,
     DEFAULT_NAME,
     DOMAIN,
@@ -39,13 +40,13 @@ from .const import (
 from .coordinator import WeatherUpdateCoordinator
 
 WEATHER_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
-     SensorEntityDescription(
-         key=ATTR_API_WEATHER,
-         name="Weather",
-     ),
+    #  SensorEntityDescription(
+    #      key=ATTR_API_WEATHER,
+    #      name="Weather",
+    #  ),
     SensorEntityDescription(
         key=ATTR_API_NATIVE_TEMPERATURE,
-        name="Native temperature",
+        name="Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -57,15 +58,30 @@ WEATHER_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
 )
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: IdokepConfigEntry, async_add_entities: AddEntitiesCallback,) -> None:
-    """Set up OpenWeatherMap sensor entities based on a config entry."""
+    """Set up IdokepWeather sensor entities based on a config entry."""
     domain_data = config_entry.runtime_data
     name = domain_data.name
+    unique_id = config_entry.unique_id
+    assert unique_id is not None
     weather_coordinator = domain_data.coordinator
 
     entity_registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
     for entry in entries:
         entity_registry.async_remove(entry.entity_id)
+
+
+    name_part_location = location = config_entry.data.get(ATTR_API_LOCATION)
+    async_add_entities(
+        IdokepSensor(
+            name_part_location,
+            unique_id,
+            description,
+            weather_coordinator,
+        )
+        for description in WEATHER_SENSOR_TYPES
+    )
+    
 
 class AbstractIdokepSensor(SensorEntity):
     """Abstract class for an Idokep sensor."""
@@ -78,12 +94,11 @@ class AbstractIdokepSensor(SensorEntity):
         self.entity_description = description
         self._coordinator = coordinator
 
-        self._attr_name = f"{name} {description.name}"
-        self._attr_unique_id = unique_id
-        split_unique_id = unique_id.split("-")
+        self._attr_name = f"{name}_{description.name}"
+        self._attr_unique_id = f"{unique_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
-            identifiers={(DOMAIN, f"{split_unique_id[0]}-{split_unique_id[1]}")},
+            identifiers={(DOMAIN, f"{unique_id}")},
             manufacturer=MANUFACTURER,
             name=DEFAULT_NAME,
         )
@@ -118,3 +133,4 @@ class IdokepSensor(AbstractIdokepSensor):
         return self._weather_coordinator.data[ATTR_API_CURRENT].get(
             self.entity_description.key
         )
+    
