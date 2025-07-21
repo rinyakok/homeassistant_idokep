@@ -83,6 +83,7 @@ weather_conditions = {
  'havas eső': 'snowy-rainy',
  'fagyott eső': 'snowy-rainy',
  'szeles': 'windy',
+ 'száraz zivatar': 'lightning',
 #Not mapped 
 #clear-night	Clear night
 #exceptional	Exceptional
