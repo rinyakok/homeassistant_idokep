@@ -219,8 +219,9 @@ async def FetchWeatherData(location):
 
             forecast_card_list = soup.find_all('div', attrs={'class': 'new-hourly-forecast-card'})
 
-            start_hour = 0
-            start_date = datetime.today()
+            current_time = datetime.now()
+            start_date = current_time.date()
+            start_hour = current_time.hour
             hourly_forecast_list = []
 
             for forecast_card in forecast_card_list:
@@ -232,7 +233,7 @@ async def FetchWeatherData(location):
                     start_date += timedelta(days=1)
                 
                 start_hour = forecast_hour
-                forecast_datetime = datetime.strptime(start_date.strftime('%Y-%m-%d') + ' ' + forecast_hour_str, '%Y-%m-%d %H:%M')
+                forecast_datetime = datetime.combine(start_date, datetime.strptime(forecast_hour_str, '%H:%M').time())
 
                 forecast_weather_obj = forecast_card.find("div" , attrs={'class': 'ik forecast-icon-container'}, recursive=False).find("a", recursive=False)
                 forecast_weather = forecast_weather_obj.get('data-bs-content')
