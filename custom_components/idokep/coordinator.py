@@ -1,7 +1,8 @@
 """Weather data coordinator for the Idokep Weather service."""
 
-from datetime import timedelta
+from datetime import timedelta, time
 import logging
+import pytz
 
 from homeassistant.components.weather import (
     ATTR_CONDITION_CLEAR_NIGHT,
@@ -136,7 +137,7 @@ def generate_date(forecast_day):
     return generated_date
 
 #======================= Fetch Forecast data ============================
-async def FetchWeatherData(location):
+async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
 
     if location == None:
         location = DEFAULT_LOCATION
@@ -146,6 +147,10 @@ async def FetchWeatherData(location):
 
     _LOGGER.debug("Fetching data for location: " + location)
     _LOGGER.debug(hourly_forecast_url)
+
+    #Get current Hungary time:
+    hungary_time = datetime.now(budapest_tz)
+    _LOGGER.debug('Hungary Current Time: ' + str(hungary_time))
 
     # ====================== GETTING ACTUAL WEATHER ==================================
 
@@ -157,8 +162,8 @@ async def FetchWeatherData(location):
             # Get Sunrise & Sunset times
             sunrise_txt = soup.find('img', attrs={'src': '/assets/icons/sunrise.svg'}).parent.text.lower().rstrip()[9:]
             sunset_txt = soup.find('img', attrs={'src': '/assets/icons/sunset.svg'}).parent.text.lower().rstrip()[10:]
-            sunrise = datetime.strptime(datetime.now().strftime('%Y-%m-%d')+' ' + sunrise_txt, '%Y-%m-%d %H:%M')
-            sunset = datetime.strptime(datetime.now().strftime('%Y-%m-%d')+' ' + sunset_txt, '%Y-%m-%d %H:%M')
+            sunrise = datetime.strptime(hungary_time.strftime('%Y-%m-%d')+' ' + sunrise_txt, '%Y-%m-%d %H:%M')
+            sunset = datetime.strptime(hungary_time.strftime('%Y-%m-%d')+' ' + sunset_txt, '%Y-%m-%d %H:%M')
 
             #Get Weather data
             actual_weather = soup.find('div', attrs={'class': 'ik current-weather'}).text.lower()
@@ -172,7 +177,7 @@ async def FetchWeatherData(location):
             actual_weather_condition = weather_conditions.get(actual_weather, actual_weather)
 
             # IF current time is later than sunset time or earlier than sunrise time and weather condition is sunny => change condition to clear night
-            if (datetime.now().time() > sunset.time()) or (datetime.now().time()< sunrise.time()):
+            if (hungary_time.time() > sunset.time()) or (hungary_time.time()< sunrise.time()):
                 if actual_weather_condition == 'sunny':
                     actual_weather_condition = 'clear-night'
 
@@ -219,21 +224,25 @@ async def FetchWeatherData(location):
 
             forecast_card_list = soup.find_all('div', attrs={'class': 'new-hourly-forecast-card'})
 
-            current_time = datetime.now()
-            start_date = current_time.date()
-            start_hour = current_time.hour
+            # Start hour for fetching the forecast data is the current hour in Hungary
+            start_hour = hungary_time.hour
+            
             hourly_forecast_list = []
 
             for forecast_card in forecast_card_list:
                 forecast_hour_str = forecast_card.find("div" , attrs={'class': 'ik new-hourly-forecast-hour'}, recursive=False).text
                 forecast_hour = int(forecast_hour_str[0:-3])
                 
-                #It's a next day forcast if forecast hour is less than start_date => need to increase date by 1 day
+                #It's a next day forcast if forecast hour is less than hungary_time => need to increase date by 1 day
                 if forecast_hour < start_hour:
-                    start_date += timedelta(days=1)
-                
+                    hungary_time += timedelta(days=1)
+               
                 start_hour = forecast_hour
-                forecast_datetime = datetime.combine(start_date, datetime.strptime(forecast_hour_str, '%H:%M').time())
+                # Combine start date and forecast hour to a datetime object
+                forecast_datetime = datetime.combine(hungary_time, time(forecast_hour, 0))
+                # Localize the datetime to Budapest timezone
+                forecast_datetime = budapest_tz.localize(forecast_datetime)
+                _LOGGER.debug('Forecast Date Time in Budapest TZ: ' + str(forecast_datetime))
 
                 forecast_weather_obj = forecast_card.find("div" , attrs={'class': 'ik forecast-icon-container'}, recursive=False).find("a", recursive=False)
                 forecast_weather = forecast_weather_obj.get('data-bs-content')
@@ -245,6 +254,11 @@ async def FetchWeatherData(location):
                 if (forecast_datetime.time() > sunset.time()) or (forecast_datetime.time() < sunrise.time()):
                     if forecast_weather_condition == 'sunny':
                         forecast_weather_condition = 'clear-night'
+
+                # Convert forecast time information to local configured timezone if it is different from Budapest timezone
+                if local_tz != budapest_tz:
+                    forecast_datetime = forecast_datetime.astimezone(local_tz)
+                _LOGGER.debug('Forecast Time in local Time Zone: ' + str(forecast_datetime))
 
                 # get temperature value
                 forecast_temperature_value = forecast_card.find("div", attrs={'class': 'ik tempBarGraph'}, recursive=False).find("div" , attrs={'class': 'ik tempValue'}, recursive=False).find("a", recursive=False).get_text().strip()
@@ -306,7 +320,13 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
         self._attr_supported_features = (
             WeatherEntityFeature.FORECAST_DAILY |
             WeatherEntityFeature.FORECAST_HOURLY
-            )
+        )
+        self.local_tz = None
+        self.budapest_tz = None
+        self.local_tz_name = "Europe/Budapest"
+        if hass and hasattr(hass, "config") and hasattr(hass.config, "time_zone") and hass.config.time_zone:
+            self.local_tz_name = hass.config.time_zone
+        _LOGGER.debug('LOCAL TIMEZONE NAME: ' + str(self.local_tz_name))
 
         super().__init__(
             hass, _LOGGER, name=DOMAIN, update_interval=WEATHER_UPDATE_INTERVAL
@@ -314,5 +334,11 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update the data."""
-        weather_data = await FetchWeatherData(self._location)
+        # Initialize timezones asynchronously if not already done
+        if self.local_tz is None:
+            self.local_tz = await self.hass.async_add_executor_job(pytz.timezone, self.local_tz_name)
+        if self.budapest_tz is None:
+            self.budapest_tz = await self.hass.async_add_executor_job(pytz.timezone, "Europe/Budapest")
+
+        weather_data = await FetchWeatherData(self._location, self.local_tz, self.budapest_tz)
         return weather_data
