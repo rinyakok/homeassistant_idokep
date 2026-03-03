@@ -165,19 +165,17 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
             soup = BeautifulSoup(html_string, "html.parser")
 
             # Get Sunrise & Sunset times
-            sunrise_txt = soup.find('img', attrs={'src': '/assets/icons/sunrise.svg'}).parent.text.lower().rstrip()[9:]
-            sunset_txt = soup.find('img', attrs={'src': '/assets/icons/sunset.svg'}).parent.text.lower().rstrip()[10:]
+            sunrise_txt = re.search(r'\d{1,2}:\d{2}', soup.find('img', attrs={'src': '/assets/icons/sunrise.svg'}).parent.text).group()
+            sunset_txt = re.search(r'\d{1,2}:\d{2}', soup.find('img', attrs={'src': '/assets/icons/sunset.svg'}).parent.text).group()
             sunrise = datetime.strptime(hungary_time.strftime('%Y-%m-%d')+' ' + sunrise_txt, '%Y-%m-%d %H:%M')
             sunset = datetime.strptime(hungary_time.strftime('%Y-%m-%d')+' ' + sunset_txt, '%Y-%m-%d %H:%M')
 
             #Get Weather data
-            actual_weather = soup.find('div', attrs={'class': 'ik current-weather'}).text.lower()
+            actual_weather = soup.find('div', attrs={'class': 'current-weather'}).text.lower()
             actual_weather_icon = soup.find('div', attrs={'class': 'current-weather-lockup'}).find('img', attrs={'class': 'ik forecast-bigicon'}).get('src')
-            actual_temperature = soup.find('div', attrs={'class': 'ik current-temperature'}).text.rstrip()
-            #Get degree from string cut off the last two characters
-            actual_temperature_value = actual_temperature[0:-2]
-            #Get °C from the last two character od the string
-            actual_temperature_unit = actual_temperature[-2:]
+            actual_temperature = soup.find('div', attrs={'class': 'ik current-temperature'}).text.strip()
+            #Extract numeric temperature value (handles both '°C' and '℃' unit formats)
+            actual_temperature_value = re.search(r'-?\d+', actual_temperature).group()
             #Getting mapped weather condition from tuple... if key doesn't exists return 'None'
             actual_weather_condition = weather_conditions.get(actual_weather, actual_weather)
 
@@ -189,7 +187,7 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
             _LOGGER.debug('Current Weather: ' + actual_temperature + '  ' + actual_weather + '   (' + actual_weather_icon +')    ' + actual_weather_condition)
         
         # ====================== GETTING DAILY FORECAST DATA ==================================
-            daily_forecast_cols = soup.find('div', attrs={'id': 'dailyForecast'}).find_all('div', attrs={'class': 'dailyForecastCol'})
+            daily_forecast_cols = soup.find('div', attrs={'id': 'dailyForecastContainer'}).find_all('div', attrs={'class': 'dailyForecastCol'})
 
             daily_forecast_list = []
 
@@ -227,7 +225,7 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
             html_string = await response.text()
             soup = BeautifulSoup(html_string, "html.parser")
 
-            forecast_card_list = soup.find_all('div', attrs={'class': 'new-hourly-forecast-card'})
+            forecast_card_list = soup.find_all('div', attrs={'class': 'wide-hourly-forecast-card'})
 
             # Start hour for fetching the forecast data is the current hour in Hungary
             start_hour = hungary_time.hour
@@ -235,7 +233,7 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
             hourly_forecast_list = []
 
             for forecast_card in forecast_card_list:
-                forecast_hour_str = forecast_card.find("div" , attrs={'class': 'ik new-hourly-forecast-hour'}, recursive=False).text
+                forecast_hour_str = forecast_card.find("div" , attrs={'class': 'ik wide-hourly-forecast-hour'}, recursive=False).text
                 forecast_hour = int(forecast_hour_str[0:-3])
                 
                 #It's a next day forcast if forecast hour is less than hungary_time => need to increase date by 1 day
@@ -270,12 +268,12 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
 
                 #===== WIND ============
 
-                forecast_wind_obj = str(forecast_card.find("div", attrs={'class': 'ik hourly-wind'}, recursive=False).find("a", recursive=False).find("div", recursive=False)['class']).split("', '")
-                #Get wind force string 
-                forecast_wind_force_str = forecast_wind_obj[-2]
+                wind_div = forecast_card.find("div", attrs={'class': 'ik hourly-wind'}, recursive=False).find("a", recursive=False).find("div", recursive=False)
+                #Get wind force string (last CSS class, e.g. 'gyenge')
+                forecast_wind_force_str = wind_div['class'][-1]
                 _LOGGER.debug('Wind force string: ' + forecast_wind_force_str)
-                #Get wind direction string (degree) string is like 'r158'
-                forecast_wind_direction = int(forecast_wind_obj[-1][1:-2])
+                #Get wind direction from style attribute: style="--rotateAngle:158deg"
+                forecast_wind_direction = int(re.search(r'--rotateAngle:\s*(\d+)deg', wind_div.get('style', '--rotateAngle:0deg')).group(1))
                 #Get mapped wind speed from wind force string
                 forecast_wind_speed = wind_mapping.get(forecast_wind_force_str)
                 _LOGGER.debug('Wind direction: ' + str(forecast_wind_direction))
