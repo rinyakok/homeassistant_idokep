@@ -10,9 +10,11 @@ from homeassistant.components.weather import (
     WeatherEntityFeature,
     Forecast,
 )
+from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import sun
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from homeassistant.const import (
@@ -48,6 +50,7 @@ from .const import (
     DOMAIN,
     DEFAULT_LOCATION,
     BASE_IDOKEP_URL,
+    USER_AGENT_TEMPLATE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -142,7 +145,7 @@ def generate_date(forecast_day):
     return generated_date
 
 #======================= Fetch Forecast data ============================
-async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
+async def FetchWeatherData(location, local_tz=None, budapest_tz=None, request_headers=None):
 
     if location == None:
         location = DEFAULT_LOCATION
@@ -159,7 +162,7 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
 
     # ====================== GETTING ACTUAL WEATHER ==================================
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=request_headers) as session:
         async with session.get(actual_weather_url) as response:
             html_string = await response.text()
             soup = BeautifulSoup(html_string, "html.parser")
@@ -326,6 +329,7 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
         )
         self.local_tz = None
         self.budapest_tz = None
+        self.request_headers = None
         self.local_tz_name = "Europe/Budapest"
         if hass and hasattr(hass, "config") and hasattr(hass.config, "time_zone") and hass.config.time_zone:
             self.local_tz_name = hass.config.time_zone
@@ -343,5 +347,17 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
         if self.budapest_tz is None:
             self.budapest_tz = await self.hass.async_add_executor_job(pytz.timezone, "Europe/Budapest")
 
-        weather_data = await FetchWeatherData(self._location, self.local_tz, self.budapest_tz)
+        if self.request_headers is None:
+            integration = await async_get_integration(self.hass, DOMAIN)
+            self.request_headers = {
+                "User-Agent": USER_AGENT_TEMPLATE.format(
+                    integration_version=integration.version,
+                    ha_version=HA_VERSION,
+                )
+            }
+            _LOGGER.debug("Request User-Agent: " + self.request_headers["User-Agent"])
+
+        weather_data = await FetchWeatherData(
+            self._location, self.local_tz, self.budapest_tz, self.request_headers
+        )
         return weather_data
