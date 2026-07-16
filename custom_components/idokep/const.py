@@ -58,4 +58,7 @@ ATTR_FORECAST_NAME = "Forecast"
 UPDATE_LISTENER = "update_listener"
 PLATFORMS = [Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
+REQUEST_HEADERS = {
+    "User-Agent": "HomeAssistant-idokep-integration (+https://github.com/rinyakok/homeassistant_idokep)"
+}
 

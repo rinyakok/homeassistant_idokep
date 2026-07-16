@@ -48,6 +48,7 @@ from .const import (
     DOMAIN,
     DEFAULT_LOCATION,
     BASE_IDOKEP_URL,
+    REQUEST_HEADERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ async def FetchWeatherData(location, local_tz=None, budapest_tz=None):
 
     # ====================== GETTING ACTUAL WEATHER ==================================
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=REQUEST_HEADERS) as session:
         async with session.get(actual_weather_url) as response:
             html_string = await response.text()
             soup = BeautifulSoup(html_string, "html.parser")
