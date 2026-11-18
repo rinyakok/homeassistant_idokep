@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import aiohttp
@@ -37,9 +38,8 @@ from .const import (
 )
 from .coordinator import BUDAPEST_TZ_NAME, FetchWeatherData, async_request_headers
 
+_LOGGER = logging.getLogger(__name__)
 
-class LocationError(Exception):
-    """The location can't be used; `error` is the translation key."""
 
 class LocationError(Exception):
     """The location can't be used; `error` is the translation key."""
@@ -175,8 +175,6 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         if registry.async_get(entity_id).unique_id != new_id:
             registry.async_update_entity(entity_id, new_unique_id=new_id)
 
-    def _move_weather_entity(self, entry_id: str, old: str, new: str) -> None:
-        """Keep the weather entity (and its entity ID) when the location changes.
 
 class IdokepOptionsFlow(OptionsFlow):
     """Options of one location: the length of the daily forecast."""
@@ -209,8 +207,4 @@ class IdokepOptionsFlow(OptionsFlow):
                 }
             ),
         )
-        if entity_id is None:
-            return
-        new_id = weather_unique_id(entry_id, new)
-        if registry.async_get(entity_id).unique_id != new_id:
-            registry.async_update_entity(entity_id, new_unique_id=new_id)
+    
