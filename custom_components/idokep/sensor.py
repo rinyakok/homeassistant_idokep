@@ -9,12 +9,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    DEGREE,
-    PERCENTAGE,
-    UV_INDEX,
-    UnitOfLength,
-    UnitOfPressure,
-    UnitOfSpeed,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -28,10 +22,8 @@ from . import IdokepConfigEntry
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CURRENT,
-    ATTR_API_NATIVE_TEMPERATURE,
-    ATTR_API_NATIVE_TEMPERATURE_UNIT,
-    ATTR_API_WEATHER,
     ATTR_API_LOCATION,
+    ATTR_API_NATIVE_TEMPERATURE,
     ATTRIBUTION,
     DEFAULT_NAME,
     DOMAIN,
@@ -57,10 +49,14 @@ WEATHER_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
     ),
 )
 
-async def async_setup_entry(hass: HomeAssistant, config_entry: IdokepConfigEntry, async_add_entities: AddEntitiesCallback,) -> None:
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: IdokepConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up IdokepWeather sensor entities based on a config entry."""
     domain_data = config_entry.runtime_data
-    name = domain_data.name
     unique_id = config_entry.unique_id
     assert unique_id is not None
     weather_coordinator = domain_data.coordinator
@@ -70,8 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: IdokepConfigEntry
     for entry in entries:
         entity_registry.async_remove(entry.entity_id)
 
-
-    name_part_location = location = config_entry.data.get(ATTR_API_LOCATION)
+    name_part_location = config_entry.data.get(ATTR_API_LOCATION)
     async_add_entities(
         IdokepSensor(
             name_part_location,
@@ -81,7 +76,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: IdokepConfigEntry
         )
         for description in WEATHER_SENSOR_TYPES
     )
-    
+
 
 class AbstractIdokepSensor(SensorEntity):
     """Abstract class for an Idokep sensor."""
@@ -89,7 +84,13 @@ class AbstractIdokepSensor(SensorEntity):
     _attr_should_poll = False
     _attr_attribution = ATTRIBUTION
 
-    def __init__(self, name: str, unique_id: str, description: SensorEntityDescription, coordinator: DataUpdateCoordinator, ) -> None:
+    def __init__(
+        self,
+        name: str,
+        unique_id: str,
+        description: SensorEntityDescription,
+        coordinator: DataUpdateCoordinator,
+    ) -> None:
         """Initialize the sensor."""
         self.entity_description = description
         self._coordinator = coordinator
@@ -122,7 +123,13 @@ class AbstractIdokepSensor(SensorEntity):
 class IdokepSensor(AbstractIdokepSensor):
     """Implementation of an Idokep sensor."""
 
-    def __init__( self, name: str, unique_id: str, description: SensorEntityDescription, weather_coordinator: WeatherUpdateCoordinator, ) -> None:
+    def __init__(
+        self,
+        name: str,
+        unique_id: str,
+        description: SensorEntityDescription,
+        weather_coordinator: WeatherUpdateCoordinator,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(name, unique_id, description, weather_coordinator)
         self._weather_coordinator = weather_coordinator
@@ -133,4 +140,3 @@ class IdokepSensor(AbstractIdokepSensor):
         return self._weather_coordinator.data[ATTR_API_CURRENT].get(
             self.entity_description.key
         )
-    
