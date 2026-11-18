@@ -1,0 +1,85 @@
+# Időkép időjárás Home Assistanthez
+
+Időjárási adatok és előrejelzés az [idokep.hu](https://www.idokep.hu)-ról, magyarországi településekre.
+
+**[English description →](https://github.com/rinyakok/homeassistant_idokep/blob/main/README.md)**
+
+## Mit tud?
+
+- **Weather entitás:** aktuális időjárás, 15 napos napi és 36 órás óránkénti előrejelzés (hőmérséklet, szél, csapadék és csapadékesély)
+- **Szenzorok:** hőmérséklet és időjárási állapot
+- **Több helyszín:** tetszőleges számú település, mindegyik külön eszközként
+- **Magyar és angol felület**
+
+## Telepítés
+
+### HACS-szal (ajánlott)
+
+1. Nyisd meg a HACS-t, és keress rá: **Időkép**.
+2. Válaszd az **Időkép Weather Component**-et, majd **Letöltés**.
+3. Indítsd újra a Home Assistantet.
+
+![HACS](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
+
+### Kézzel
+
+Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_components` mappájába, majd indítsd újra a Home Assistantet.
+
+## Beállítás
+
+1. **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása**, majd válaszd az **Időkép**-et.
+2. Add meg a település nevét úgy, ahogy az idokep.hu-n szerepel. Például **Pécs** (`https://www.idokep.hu/idojaras/Pécs`).
+   - Az ékezet elhagyható: az `erd` is Érdet jelenti. Az integráció az idokep.hu írásmódját menti el.
+   - Ha az idokep.hu nem ismeri a nevet, Budapestet mutatja helyette. Ilyenkor a beállítás hibát jelez, így nem kapsz véletlenül budapesti adatokat.
+3. További településekhez ismételd meg.
+
+**Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
+
+## Entitások
+
+Egy „Érd” nevű helyszínnél:
+
+| Entitás | Leírás |
+|---|---|
+| `weather.idokep_erd` | Aktuális időjárás, napi és óránkénti előrejelzés |
+| `sensor.idokep_erd_temperature` | Aktuális hőmérséklet (°C) |
+| `sensor.idokep_erd_condition` | Aktuális állapot Home Assistant formában (pl. `rainy`, `partlycloudy`) |
+
+Az előrejelzést a `weather.get_forecasts` művelettel lehet lekérni (`type: daily` vagy `type: hourly`).
+
+### Időjárási állapotok
+
+Az idokep.hu magyar leírásait az integráció Home Assistant állapotokra fordítja. Néhány példa:
+
+| idokep.hu | Home Assistant |
+|---|---|
+| derült, napos | `sunny` (éjjel `clear-night`) |
+| gyengén / közepesen felhős | `partlycloudy` |
+| erősen felhős, borult | `cloudy` |
+| gyenge eső, eső, zápor, szitálás | `rainy` |
+| erős eső | `pouring` |
+| zivatar | `lightning-rainy` |
+| köd, ködös, pára | `fog` |
+| havazás, hózápor | `snowy` |
+| havas eső, ónos eső | `snowy-rainy` |
+| porvihar | `exceptional` |
+
+Ha egy leírás még nincs a listában, az állapot ismeretlen lesz, és a naplóban egy figyelmeztetés jelenik meg. Kérlek, jelezd [hibajegyben](https://github.com/rinyakok/homeassistant_idokep/issues), és felvesszük.
+
+## Átállás a HA-Idokep integrációról
+
+A FabianGabor/HA-Idokep és ez az integráció ugyanazt az `idokep` azonosítót használja, ezért egyszerre csak az egyik lehet telepítve. Az átállás:
+
+1. A HACS-ban távolítsd el a **HA-Idokep**-et. Az integráció bejegyzéseit (**Beállítások → Eszközök és szolgáltatások**) **ne töröld**.
+2. Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS-ból.
+3. Telepítsd ezt az integrációt a HACS-ból, majd indítsd újra a Home Assistantet.
+
+A meglévő bejegyzéseket az integráció automatikusan átveszi. A közös entitások (weather, hőmérséklet, állapot) azonosítója nem változik. Azok a HA-Idokep entitások, amelyek itt még nincsenek meg, egyelőre „nem elérhető” állapotúak lesznek.
+
+## Hogyan működik?
+
+Az integráció 20 percenként, településenként két oldalt tölt le az idokep.hu-ról (`/idojaras/` és `/elorejelzes/`), és ezekből olvassa ki az adatokat. Hivatalos API nincs, ezért ha az oldal szerkezete megváltozik, egyes adatok hiányozhatnak. Az integráció ilyenkor a többi adatot tovább frissíti, és a naplóba ír.
+
+## Hibabejelentés
+
+Hibát vagy hiányzó időjárási állapotot a [GitHub hibajegyek](https://github.com/rinyakok/homeassistant_idokep/issues) között jelezhetsz. Hasznos, ha megadod a település nevét és a Home Assistant naplójának idevágó sorait.

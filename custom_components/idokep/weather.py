@@ -1,4 +1,4 @@
-"""Support for the Idokep Weather service."""
+"""Weather entity for the Idokep Weather service."""
 
 from __future__ import annotations
 
@@ -8,101 +8,70 @@ from homeassistant.components.weather import (
     WeatherEntityFeature,
 )
 from homeassistant.const import (
-    UnitOfLength,
     UnitOfPrecipitationDepth,
-    UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import IdokepConfigEntry
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CURRENT,
     ATTR_API_DAILY_FORECAST,
     ATTR_API_HOURLY_FORECAST,
-    ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
-    ATTR_API_NATIVE_TEMPERATURE_UNIT,
-    ATTR_FORECAST_NAME,
     ATTRIBUTION,
-    DEFAULT_NAME,
-    DOMAIN,
-    MANUFACTURER,
+    CONF_LOCATION,
+    weather_unique_id,
 )
 from .coordinator import WeatherUpdateCoordinator
+from .entity import idokep_device_info
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry,
+    entry: IdokepConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Idokep weather entity based on a config entry."""
-    domain_data = config_entry.runtime_data
-    location = config_entry.data.get(ATTR_API_LOCATION)
-
-    weather_coordinator = domain_data.coordinator
-
-    unique_id = f"{config_entry.unique_id}"
-    idokep_weather = IdokepWeather(
-        f"{location}_{ATTR_FORECAST_NAME}", unique_id, weather_coordinator
-    )
-
-    async_add_entities([idokep_weather], False)
+    """Set up the weather entity of one location."""
+    async_add_entities([IdokepWeather(entry.runtime_data.coordinator)])
 
 
 class IdokepWeather(SingleCoordinatorWeatherEntity[WeatherUpdateCoordinator]):
-    """Implementation of an Idokep Weather sensor."""
+    """The Időkép weather entity of one location."""
 
     _attr_attribution = ATTRIBUTION
-    _attr_should_poll = False
+    _attr_has_entity_name = True
+    # The entity uses the device name ("Időkép Érd"): weather.idokep_erd
+    _attr_name = None
 
     _attr_native_precipitation_unit = UnitOfPrecipitationDepth.MILLIMETERS
-    _attr_native_pressure_unit = UnitOfPressure.HPA
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_wind_speed_unit = UnitOfSpeed.KILOMETERS_PER_HOUR
-    _attr_native_visibility_unit = UnitOfLength.METERS
+    _attr_supported_features = (
+        WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
+    )
 
-    def __init__(
-        self,
-        name: str,
-        unique_id: str,
-        weather_coordinator: WeatherUpdateCoordinator,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(weather_coordinator)
-        self._attr_name = name
-        self._attr_unique_id = unique_id
-        self._attr_device_info = DeviceInfo(
-            entry_type=DeviceEntryType.SERVICE,
-            identifiers={(DOMAIN, unique_id)},
-            manufacturer=MANUFACTURER,
-            name=DEFAULT_NAME,
+    def __init__(self, coordinator: WeatherUpdateCoordinator) -> None:
+        """Initialize the weather entity."""
+        super().__init__(coordinator)
+        entry = coordinator.config_entry
+        self._attr_unique_id = weather_unique_id(
+            entry.entry_id, entry.data[CONF_LOCATION]
         )
-
-        self._attr_supported_features = (
-            WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
-        )
+        self._attr_device_info = idokep_device_info(entry)
 
     @property
     def condition(self) -> str | None:
         """Return the current condition."""
-        return self.coordinator.data[ATTR_API_CURRENT].get(ATTR_API_CONDITION)
+        return self.coordinator.data[ATTR_API_CURRENT][ATTR_API_CONDITION]
 
     @property
     def native_temperature(self) -> float | None:
         """Return the temperature."""
-        return self.coordinator.data[ATTR_API_CURRENT].get(ATTR_API_NATIVE_TEMPERATURE)
-
-    @property
-    def native_temperature_unit(self) -> str | None:
-        """Return the temperature."""
-        return self.coordinator.data[ATTR_API_CURRENT].get(
-            ATTR_API_NATIVE_TEMPERATURE_UNIT
-        )
+        return self.coordinator.data[ATTR_API_CURRENT][ATTR_API_NATIVE_TEMPERATURE]
 
     @callback
     def _async_forecast_daily(self) -> list[Forecast] | None:

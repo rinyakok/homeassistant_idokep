@@ -193,3 +193,27 @@ def test_generate_date_rolls_into_next_month() -> None:
 def test_generate_date_invalid_day_returns_none() -> None:
     """A day that does not exist returns None instead of a text."""
     assert generate_date(31, date(2026, 11, 30)) is None
+
+
+async def test_page_shows_which_place_idokep_used(weather) -> None:
+    """The place from the page title is returned (Budapest for unknown names)."""
+    assert weather["location"] == "Érd"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Érd időjárás - Időkép", "Érd"),
+        ("Budapest XI. kerület időjárás - Időkép", "Budapest XI. kerület"),
+        ("Időkép", None),
+    ],
+)
+def test_parse_location_name(title, expected) -> None:
+    """The place name is the part before 'időjárás' in the title."""
+    soup = BeautifulSoup(f"<title>{title}</title>", "html.parser")
+    assert coordinator.parse_location_name(soup) == expected
+
+
+def test_parse_location_name_without_title() -> None:
+    """A page without a title gives no place name."""
+    assert coordinator.parse_location_name(BeautifulSoup("", "html.parser")) is None

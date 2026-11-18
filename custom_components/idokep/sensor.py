@@ -2,131 +2,90 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import (
-    UnitOfTemperature,
-)
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import IdokepConfigEntry
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CURRENT,
-    ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTRIBUTION,
-    DEFAULT_NAME,
-    DOMAIN,
-    MANUFACTURER,
 )
 from .coordinator import WeatherUpdateCoordinator
+from .entity import idokep_device_info
 
-WEATHER_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
-    SensorEntityDescription(
-        key=ATTR_API_NATIVE_TEMPERATURE,
-        name="Temperature",
+
+@dataclass(frozen=True, kw_only=True)
+class IdokepSensorEntityDescription(SensorEntityDescription):
+    """Describes an Időkép sensor."""
+
+    value_fn: Callable[[dict[str, Any]], StateType]
+
+
+# The keys are part of the unique IDs; they match FabianGabor/HA-Idokep.
+SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
+    IdokepSensorEntityDescription(
+        key="temperature",
+        translation_key="temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data[ATTR_API_CURRENT][ATTR_API_NATIVE_TEMPERATURE],
     ),
-    SensorEntityDescription(
-        key=ATTR_API_CONDITION,
-        name="Condition",
+    IdokepSensorEntityDescription(
+        key="condition",
+        translation_key="condition",
+        value_fn=lambda data: data[ATTR_API_CURRENT][ATTR_API_CONDITION],
     ),
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: IdokepConfigEntry,
+    entry: IdokepConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up IdokepWeather sensor entities based on a config entry."""
-    domain_data = config_entry.runtime_data
-    unique_id = config_entry.unique_id
-    assert unique_id is not None
-    weather_coordinator = domain_data.coordinator
-
-    name_part_location = config_entry.data.get(ATTR_API_LOCATION)
+    """Set up the sensors of one location."""
+    coordinator = entry.runtime_data.coordinator
     async_add_entities(
-        IdokepSensor(
-            name_part_location,
-            unique_id,
-            description,
-            weather_coordinator,
-        )
-        for description in WEATHER_SENSOR_TYPES
+        IdokepSensor(coordinator, description) for description in SENSOR_TYPES
     )
 
 
-class AbstractIdokepSensor(SensorEntity):
-    """Abstract class for an Idokep sensor."""
+class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
+    """An Időkép sensor."""
 
-    _attr_should_poll = False
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    entity_description: IdokepSensorEntityDescription
 
     def __init__(
         self,
-        name: str,
-        unique_id: str,
-        description: SensorEntityDescription,
-        coordinator: DataUpdateCoordinator,
+        coordinator: WeatherUpdateCoordinator,
+        description: IdokepSensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
+        super().__init__(coordinator)
         self.entity_description = description
-        self._coordinator = coordinator
-
-        self._attr_name = f"{name}_{description.name}"
-        self._attr_unique_id = f"{unique_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            entry_type=DeviceEntryType.SERVICE,
-            identifiers={(DOMAIN, f"{unique_id}")},
-            manufacturer=MANUFACTURER,
-            name=DEFAULT_NAME,
-        )
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher listening for entity data notifications."""
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self) -> None:
-        """Request a refresh of the weather data."""
-        await self._coordinator.async_request_refresh()
-
-
-class IdokepSensor(AbstractIdokepSensor):
-    """Implementation of an Idokep sensor."""
-
-    def __init__(
-        self,
-        name: str,
-        unique_id: str,
-        description: SensorEntityDescription,
-        weather_coordinator: WeatherUpdateCoordinator,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(name, unique_id, description, weather_coordinator)
-        self._weather_coordinator = weather_coordinator
+        entry = coordinator.config_entry
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = idokep_device_info(entry)
 
     @property
     def native_value(self) -> StateType:
-        """Return the state of the device."""
-        return self._weather_coordinator.data[ATTR_API_CURRENT].get(
-            self.entity_description.key
-        )
+        """Return the state of the sensor."""
+        return self.entity_description.value_fn(self.coordinator.data)

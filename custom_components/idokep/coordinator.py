@@ -12,6 +12,7 @@ from homeassistant.components.weather import (
     Forecast,
     WeatherEntityFeature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfTemperature,
 )
@@ -27,12 +28,15 @@ from .const import (
     ATTR_API_CURRENT,
     ATTR_API_DAILY_FORECAST,
     ATTR_API_HOURLY_FORECAST,
+    ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
     BASE_IDOKEP_URL,
+    CONF_LOCATION,
     DEFAULT_LOCATION,
     DOMAIN,
     USER_AGENT_TEMPLATE,
+    entry_unique_id,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -207,6 +211,20 @@ def _parse_title_date(title: str | None) -> date | None:
         return date(int(match.group(1)), month, int(match.group(3)))
     except ValueError:
         return None
+
+
+def parse_location_name(soup: BeautifulSoup) -> str | None:
+    """Return the place idokep.hu really shows, from the page title.
+
+    idokep.hu shows Budapest for unknown place names, without an error, so
+    the title ("Érd időjárás - Időkép") is the only way to notice it.
+    """
+    title = soup.find("title")
+    if title is None:
+        return None
+    text = " ".join(title.get_text().split())
+    place, separator, _ = text.partition(" időjárás")
+    return place if separator and place else None
 
 
 def _parse_sun_times(
@@ -478,6 +496,7 @@ async def FetchWeatherData(
     current_page = await _fetch_page(
         session, f"{BASE_IDOKEP_URL}/idojaras/{location}", request_headers
     )
+    resolved_location = parse_location_name(current_page)
     sunrise, sunset = _parse_sun_times(current_page, now.date(), budapest_tz)
     current = _parse_current(current_page, now, sunrise, sunset)
     daily = _parse_daily(current_page, now.date(), budapest_tz, local_tz)
@@ -494,6 +513,7 @@ async def FetchWeatherData(
         )
 
     return {
+        ATTR_API_LOCATION: resolved_location,
         ATTR_API_CURRENT: current,
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
@@ -503,16 +523,26 @@ async def FetchWeatherData(
 # ==========================================================================
 
 
+async def async_request_headers(hass: HomeAssistant) -> dict[str, str]:
+    """Return the HTTP headers: an honest User-Agent with versions."""
+    integration = await async_get_integration(hass, DOMAIN)
+    return {
+        "User-Agent": USER_AGENT_TEMPLATE.format(
+            integration_version=integration.version,
+            ha_version=HA_VERSION,
+        )
+    }
+
+
 class WeatherUpdateCoordinator(DataUpdateCoordinator):
     """Weather data update coordinator."""
 
-    def __init__(
-        self,
-        location: str,
-        hass: HomeAssistant,
-    ) -> None:
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
-        self._location = location
+        self._location: str = entry.data[CONF_LOCATION]
+        self._fallback_logged = False
         self._attr_supported_features = (
             WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
         )
@@ -523,7 +553,11 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Local time zone name: %s", self.local_tz_name)
 
         super().__init__(
-            hass, _LOGGER, name=DOMAIN, update_interval=WEATHER_UPDATE_INTERVAL
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} {self._location}",
+            update_interval=WEATHER_UPDATE_INTERVAL,
         )
 
     async def _async_update_data(self):
@@ -534,17 +568,11 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
             self.budapest_tz = await dt_util.async_get_time_zone(BUDAPEST_TZ_NAME)
 
         if self.request_headers is None:
-            integration = await async_get_integration(self.hass, DOMAIN)
-            self.request_headers = {
-                "User-Agent": USER_AGENT_TEMPLATE.format(
-                    integration_version=integration.version,
-                    ha_version=HA_VERSION,
-                )
-            }
+            self.request_headers = await async_request_headers(self.hass)
             _LOGGER.debug("Request User-Agent: %s", self.request_headers["User-Agent"])
 
         try:
-            return await FetchWeatherData(
+            data = await FetchWeatherData(
                 async_get_clientsession(self.hass),
                 self._location,
                 self.local_tz,
@@ -553,3 +581,18 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
             )
         except (aiohttp.ClientError, TimeoutError) as err:
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err
+
+        resolved = data[ATTR_API_LOCATION]
+        if (
+            resolved
+            and entry_unique_id(resolved) != entry_unique_id(self._location)
+            and not self._fallback_logged
+        ):
+            self._fallback_logged = True
+            _LOGGER.warning(
+                "idokep.hu does not know the location %r and shows %r instead; "
+                "please correct the location (Reconfigure)",
+                self._location,
+                resolved,
+            )
+        return data

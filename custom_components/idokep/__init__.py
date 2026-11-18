@@ -5,18 +5,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
-from .const import ATTR_API_LOCATION, PLATFORMS
+from .const import (
+    CONF_LOCATION,
+    CONFIG_FLOW_VERSION,
+    DOMAIN,
+    LEGACY_CONF_LOCATION,
+    LEGACY_DEFAULT_TITLE,
+    LEGACY_UNIQUE_ID,
+    PLATFORMS,
+    entry_unique_id,
+    weather_unique_id,
+)
 from .coordinator import WeatherUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
 class IdokepData:
     """Runtime data definition."""
 
-    name: str
     coordinator: WeatherUpdateCoordinator
 
 
@@ -24,13 +36,11 @@ type IdokepConfigEntry = ConfigEntry[IdokepData]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
-    """Set up IdokepWeather as config entry."""
-    weather_coordinator = WeatherUpdateCoordinator(
-        entry.data.get(ATTR_API_LOCATION), hass
-    )
-    await weather_coordinator.async_config_entry_first_refresh()
+    """Set up one Időkép location."""
+    coordinator = WeatherUpdateCoordinator(hass, entry)
+    await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = IdokepData(entry.data[CONF_NAME], weather_coordinator)
+    entry.runtime_data = IdokepData(coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -39,3 +49,62 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries to version 2.
+
+    Two kinds of version 1 entries exist with this domain:
+    - this integration before multiple locations: data {"name", "location_name"},
+      fixed unique IDs ("IdokepWeatherUID...");
+    - FabianGabor/HA-Idokep: data {"location"}, unique IDs already in the
+      version 2 format.
+    Entity IDs stay the same in both cases, so dashboards and automations
+    keep working.
+    """
+    if entry.version > CONFIG_FLOW_VERSION:
+        # Downgrade from a future version: not supported.
+        return False
+
+    if entry.version == 1:
+        if LEGACY_CONF_LOCATION in entry.data:
+            await _migrate_legacy_entry(hass, entry)
+        else:
+            hass.config_entries.async_update_entry(entry, version=2)
+        _LOGGER.info("Migrated Időkép entry %s to version 2", entry.data[CONF_LOCATION])
+    return True
+
+
+async def _migrate_legacy_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Move a single-location entry of this integration to version 2."""
+    location: str = entry.data[LEGACY_CONF_LOCATION]
+    new_unique_ids = {
+        f"{LEGACY_UNIQUE_ID}_native_temperature": f"{entry.entry_id}_temperature",
+        f"{LEGACY_UNIQUE_ID}_condition": f"{entry.entry_id}_condition",
+        LEGACY_UNIQUE_ID: weather_unique_id(entry.entry_id, location),
+    }
+
+    @callback
+    def _new_unique_id(entity: er.RegistryEntry) -> dict | None:
+        if entity.unique_id in new_unique_ids:
+            return {"new_unique_id": new_unique_ids[entity.unique_id]}
+        return None
+
+    await er.async_migrate_entries(hass, entry.entry_id, _new_unique_id)
+
+    # Keep the existing device (and its area) by moving it to the new ID.
+    device_registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        if (DOMAIN, LEGACY_UNIQUE_ID) in device.identifiers:
+            device_registry.async_update_device(
+                device.id, new_identifiers={(DOMAIN, entry.entry_id)}
+            )
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data={CONF_LOCATION: location},
+        unique_id=entry_unique_id(location),
+        # Keep a title the user chose; replace the old default name.
+        title=location if entry.title == LEGACY_DEFAULT_TITLE else entry.title,
+        version=2,
+    )

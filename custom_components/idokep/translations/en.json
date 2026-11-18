@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add an Időkép location",
+        "description": "Type the name of a Hungarian place as it is written on idokep.hu, for example Érd or Balatonfüred.",
+        "data": {
+          "location": "Location"
+        },
+        "data_description": {
+          "location": "Settlement name. Accents are optional: \"erd\" works for Érd."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the location",
+        "description": "Entity IDs stay the same, so dashboards and automations keep working.",
+        "data": {
+          "location": "Location"
+        },
+        "data_description": {
+          "location": "Settlement name, as written on idokep.hu."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to idokep.hu. Try again later.",
+      "location_not_found": "No weather data found on idokep.hu for this location.",
+      "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling."
+    },
+    "abort": {
+      "already_configured": "This location is already added.",
+      "reconfigure_successful": "The location was changed."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "condition": {
+        "name": "Condition"
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
@@ -40,18 +41,27 @@ class FakeClientSession:
     """Serves the saved pages instead of calling idokep.hu."""
 
     def __init__(self, pages: dict[str, str] | None = None) -> None:
+        # With the saved Érd pages, the page title follows the requested
+        # place, like on idokep.hu ("Győr időjárás - Időkép").
+        self.echo_location = pages is None
         self.pages = pages or {
             "/idojaras/": load_fixture("idojaras.html"),
             "/elorejelzes/": load_fixture("elorejelzes.html"),
         }
         self.requested: list[str] = []
         self.headers: list[dict | None] = []
+        self.error: Exception | None = None
 
     def get(self, url: str, headers=None, timeout=None) -> FakeResponse:
         self.requested.append(url)
         self.headers.append(headers)
+        if self.error is not None:
+            raise self.error
         for part, page in self.pages.items():
             if part in url:
+                if self.echo_location:
+                    place = unquote(url.rsplit("/", 1)[-1])
+                    page = page.replace("Érd időjárás", f"{place} időjárás")
                 return FakeResponse(page)
         raise AssertionError(f"Unexpected URL: {url}")
 
@@ -66,8 +76,9 @@ def enable_custom_integrations(enable_custom_integrations):
 def fake_idokep(monkeypatch) -> FakeClientSession:
     """Answer idokep.hu requests from the saved pages."""
     session = FakeClientSession()
-    monkeypatch.setattr(
-        "custom_components.idokep.coordinator.async_get_clientsession",
-        lambda hass: session,
-    )
+    for module in ("coordinator", "config_flow"):
+        monkeypatch.setattr(
+            f"custom_components.idokep.{module}.async_get_clientsession",
+            lambda hass: session,
+        )
     return session
