@@ -135,6 +135,20 @@ def map_condition(text: str | None) -> str | None:
     return condition
 
 
+class MissingElementError(ValueError):
+    """An expected element is not on the idokep.hu page."""
+
+
+def _find(parent: Tag, name: str, recursive: bool = True, **attrs) -> Tag:
+    """Find a child element, or raise MissingElementError if it is missing."""
+    if "class_" in attrs:
+        attrs["class"] = attrs.pop("class_")
+    found = parent.find(name, attrs=attrs, recursive=recursive)
+    if not isinstance(found, Tag):
+        raise MissingElementError(f"<{name} {attrs}> not found")
+    return found
+
+
 def _first_int(text: str | None) -> int | None:
     """Return the first (possibly negative) whole number in a text."""
     match = re.search(r"-?\d+", text or "")
@@ -262,13 +276,13 @@ def _parse_daily_column(
     column: Tag, today: date, budapest_tz: tzinfo, local_tz: tzinfo
 ) -> Forecast | None:
     """Parse one daily forecast column."""
-    icon_link = column.find("div", attrs={"class": "ik dfIconAlert"}).find("a")
+    icon_link = _find(_find(column, "div", class_="ik dfIconAlert"), "a")
 
     # The full date is in the title ("Szerda<br>2026. november 18."). The day
     # number is only a fallback, because it can't tell the month on its own.
     forecast_date = _parse_title_date(icon_link.get("title"))
     if forecast_date is None:
-        day_span = column.find("span", attrs={"class": re.compile("dfDayNum")})
+        day_span = _find(column, "span", class_=re.compile("dfDayNum"))
         forecast_date = generate_date(int(day_span.get_text()), today)
     if forecast_date is None:
         return None
@@ -278,8 +292,7 @@ def _parse_daily_column(
     )
     condition = map_condition(description.group(1) if description else None)
 
-    temperatures = column.find("div", attrs={"class": "ik min-max-container"})
-    links = temperatures.find_all("a")
+    links = _find(column, "div", class_="ik min-max-container").find_all("a")
     temperature_max = _first_int(links[0].get_text())
     temperature_min = _first_int(links[1].get_text()) if len(links) > 1 else None
 
@@ -288,7 +301,8 @@ def _parse_daily_column(
     rain = column.find("div", attrs={"class": "ik rainlevel-container"})
     if rain is not None:
         amount = rain.find("span", attrs={"class": "ik mm"})
-        precipitation = (_first_float(amount.get_text()) if amount else None) or 0.0
+        if amount is not None:
+            precipitation = _first_float(amount.get_text()) or 0.0
 
     forecast_datetime = datetime.combine(
         forecast_date, time(0, 0), tzinfo=budapest_tz
@@ -326,6 +340,7 @@ def _parse_daily(
 
 def _parse_hourly_card(
     card: Tag,
+    hour: int,
     forecast_day: date,
     budapest_tz: tzinfo,
     local_tz: tzinfo,
@@ -333,16 +348,12 @@ def _parse_hourly_card(
     sunset: datetime | None,
 ) -> Forecast:
     """Parse one hourly forecast card for the given day."""
-    hour_text = card.find(
-        "div", attrs={"class": "ik wide-hourly-forecast-hour"}, recursive=False
-    ).get_text()
     forecast_datetime = datetime.combine(
-        forecast_day, time(int(hour_text.strip()[0:-3]), 0), tzinfo=budapest_tz
+        forecast_day, time(hour, 0), tzinfo=budapest_tz
     )
 
-    icon_link = card.find(
-        "div", attrs={"class": "ik forecast-icon-container"}, recursive=False
-    ).find("a", recursive=False)
+    icon_container = _find(card, "div", False, class_="ik forecast-icon-container")
+    icon_link = _find(icon_container, "a", False)
     condition = _night_condition(
         map_condition(icon_link.get("data-bs-content")),
         forecast_datetime,
@@ -350,20 +361,17 @@ def _parse_hourly_card(
         sunset,
     )
 
-    temperature = _first_int(
-        card.find("div", attrs={"class": "ik tempBarGraph"}, recursive=False)
-        .find("div", attrs={"class": "ik tempValue"}, recursive=False)
-        .find("a", recursive=False)
-        .get_text()
-    )
+    temperature_bar = _find(card, "div", False, class_="ik tempBarGraph")
+    temperature_value = _find(temperature_bar, "div", False, class_="ik tempValue")
+    temperature = _first_int(_find(temperature_value, "a", False).get_text())
 
     # Wind force is the last CSS class (e.g. 'gyenge'), the direction is in
     # the style attribute: style="--rotateAngle:158deg"
     wind_speed = None
     wind_bearing = None
-    wind = card.find("div", attrs={"class": "ik hourly-wind"}, recursive=False)
-    wind_div = wind.find("a", recursive=False).find("div", recursive=False)
-    if wind_div is not None:
+    wind_link = _find(_find(card, "div", False, class_="ik hourly-wind"), "a", False)
+    wind_div = wind_link.find("div", recursive=False)
+    if isinstance(wind_div, Tag):
         wind_speed = wind_mapping.get(wind_div["class"][-1])
         rotate = re.search(r"--rotateAngle:\s*(\d+)deg", wind_div.get("style", ""))
         wind_bearing = int(rotate.group(1)) if rotate else None
@@ -378,7 +386,9 @@ def _parse_hourly_card(
         chance = card.find(
             "div", attrs={"class": "ik hourly-rain-chance"}, recursive=False
         )
-        precipitation_probability = _first_int(chance.get_text()) if chance else None
+        precipitation_probability = (
+            _first_int(chance.get_text()) if chance is not None else None
+        )
 
     return Forecast(
         datetime=forecast_datetime.astimezone(local_tz).isoformat(),
@@ -406,9 +416,7 @@ def _parse_hourly(
 
     for card in soup.find_all("div", attrs={"class": "wide-hourly-forecast-card"}):
         try:
-            hour_div = card.find(
-                "div", attrs={"class": "ik wide-hourly-forecast-hour"}, recursive=False
-            )
+            hour_div = _find(card, "div", False, class_="ik wide-hourly-forecast-hour")
             hour = int(hour_div.get_text().strip()[0:-3])
         except PARSE_ERRORS as err:
             _LOGGER.debug("Skipping hourly forecast card: %r", err)
@@ -422,7 +430,7 @@ def _parse_hourly(
         try:
             forecasts.append(
                 _parse_hourly_card(
-                    card, forecast_day, budapest_tz, local_tz, sunrise, sunset
+                    card, hour, forecast_day, budapest_tz, local_tz, sunrise, sunset
                 )
             )
         except PARSE_ERRORS as err:
