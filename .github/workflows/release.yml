@@ -1,0 +1,30 @@
+name: Release check
+
+# Runs when a release is published: the tag must match the version in
+# manifest.json, because Home Assistant and HACS show the manifest version.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Tag matches manifest version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare release tag and manifest.json version
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          manifest=$(jq -r .version custom_components/idokep/manifest.json)
+          tag="${TAG#v}"
+          echo "Release tag: ${tag}, manifest.json version: ${manifest}"
+          if [ "${tag}" != "${manifest}" ]; then
+            echo "::error file=custom_components/idokep/manifest.json::manifest.json version (${manifest}) does not match the release tag (${tag}). Update the version and publish the release again."
+            exit 1
+          fi

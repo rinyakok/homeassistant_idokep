@@ -175,14 +175,8 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         if registry.async_get(entity_id).unique_id != new_id:
             registry.async_update_entity(entity_id, new_unique_id=new_id)
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Change the location of an existing entry."""
-        entry = self._get_reconfigure_entry()
-        old_location: str = entry.data[CONF_LOCATION]
-        errors: dict[str, str] = {}
-        placeholders: dict[str, str] = {}
+    def _move_weather_entity(self, entry_id: str, old: str, new: str) -> None:
+        """Keep the weather entity (and its entity ID) when the location changes.
 
 class IdokepOptionsFlow(OptionsFlow):
     """Options of one location: the length of the daily forecast."""
