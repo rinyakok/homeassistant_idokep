@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Időkép helyszín hozzáadása",
+        "description": "Add meg a település nevét úgy, ahogy az idokep.hu-n szerepel, például Érd vagy Balatonfüred.",
+        "data": {
+          "location": "Helyszín"
+        },
+        "data_description": {
+          "location": "Település neve. Az ékezet elhagyható: az \"erd\" is Érdet jelenti."
+        }
+      },
+      "reconfigure": {
+        "title": "Helyszín módosítása",
+        "description": "Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.",
+        "data": {
+          "location": "Helyszín"
+        },
+        "data_description": {
+          "location": "Település neve, ahogy az idokep.hu-n szerepel."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nem sikerült csatlakozni az idokep.hu-hoz. Próbáld újra később.",
+      "location_not_found": "Ehhez a helyszínhez nincs időjárási adat az idokep.hu-n.",
+      "location_fallback": "Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: {shown}. Ellenőrizd az írásmódot."
+    },
+    "abort": {
+      "already_configured": "Ez a helyszín már hozzá van adva.",
+      "reconfigure_successful": "A helyszín módosult."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Hőmérséklet"
+      },
+      "condition": {
+        "name": "Időjárás"
+      }
+    }
+  }
+}
