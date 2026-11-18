@@ -35,6 +35,8 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
    - Ha az idokep.hu nem ismeri a nevet, Budapestet mutatja helyette. Ilyenkor a beállítás hibát jelez, így nem kapsz véletlenül budapesti adatokat.
 3. További településekhez ismételd meg.
 
+**30 napos előrejelzés:** az integráció bejegyzésénél a **Beállítások** (fogaskerék) pontban választható a 15 napos (alapértelmezett) vagy a 30 napos napi előrejelzés. A 30 naposhoz frissítésenként eggyel több oldalt tölt le az integráció.
+
 **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
 
 ## Entitások

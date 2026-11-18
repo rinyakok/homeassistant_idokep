@@ -16,6 +16,12 @@ DEFAULT_LOCATION = "Budapest"
 CONFIG_FLOW_VERSION = 2
 CONF_LOCATION = "location"
 
+# Option: length of the daily forecast. 30 days needs one more page
+# (/30napos/) per update.
+CONF_FORECAST_DAYS = "forecast_days"
+DEFAULT_FORECAST_DAYS = 15
+FORECAST_DAYS_CHOICES = (15, 30)
+
 # Version 1 of this integration (before multiple locations).
 LEGACY_CONF_LOCATION = "location_name"
 LEGACY_UNIQUE_ID = "IdokepWeatherUID"

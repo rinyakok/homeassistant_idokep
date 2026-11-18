@@ -76,5 +76,24 @@
         "name": "Piros riasztás"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Időkép beállítások",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról.",
+        "data": {
+          "forecast_days": "Napi előrejelzés"
+        }
+      }
+    }
+  },
+  "selector": {
+    "forecast_days": {
+      "options": {
+        "15": "15 nap",
+        "30": "30 nap"
+      }
+    }
   }
 }

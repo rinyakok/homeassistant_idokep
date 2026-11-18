@@ -7,19 +7,32 @@ from typing import Any
 
 import aiohttp
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import TextSelector
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+)
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_API_LOCATION,
+    CONF_FORECAST_DAYS,
     CONF_LOCATION,
     CONFIG_FLOW_VERSION,
+    DEFAULT_FORECAST_DAYS,
     DOMAIN,
+    FORECAST_DAYS_CHOICES,
     entry_unique_id,
     weather_unique_id,
 )
@@ -75,6 +88,12 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Idokep: one entry per location."""
 
     VERSION = CONFIG_FLOW_VERSION
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> IdokepOptionsFlow:
+        """Return the options flow."""
+        return IdokepOptionsFlow()
 
     async def _async_check(
         self, user_input: dict[str, Any]
@@ -155,3 +174,36 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         new_id = weather_unique_id(entry_id, new)
         if registry.async_get(entity_id).unique_id != new_id:
             registry.async_update_entity(entity_id, new_unique_id=new_id)
+
+
+class IdokepOptionsFlow(OptionsFlow):
+    """Options of one location: the length of the daily forecast."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose 15 or 30 days."""
+        if user_input is not None:
+            return self.async_create_entry(
+                data={CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
+            )
+
+        current = self.config_entry.options.get(
+            CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
+                        SelectSelector(
+                            SelectSelectorConfig(
+                                options=[str(d) for d in FORECAST_DAYS_CHOICES],
+                                mode=SelectSelectorMode.LIST,
+                                translation_key=CONF_FORECAST_DAYS,
+                            )
+                        )
+                    )
+                }
+            ),
+        )

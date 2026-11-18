@@ -29,6 +29,8 @@ Weather data and forecasts from [idokep.hu](https://www.idokep.hu) for places in
 
 To change a place later, use **Reconfigure** on the integration entry. Entity IDs stay the same.
 
+**Options:** the daily forecast can be 15 days (default) or 30 days. 30 days needs one more download from idokep.hu per update.
+
 ## Entities (for a place called Érd)
 
 | Entity | Description |
