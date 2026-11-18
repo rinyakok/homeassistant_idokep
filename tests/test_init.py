@@ -279,3 +279,17 @@ async def test_reconfigure_error_shows_form(hass: HomeAssistant, fake_idokep) ->
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reconfigure_same_place_other_spelling(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Typing the same place differently keeps everything as it is."""
+    entry = await _setup(hass)
+
+    result = await _reconfigure(hass, entry, "ÉRD")
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.unique_id == "erd"
+    weather = er.async_get(hass).async_get("weather.idokep_erd")
+    assert weather.unique_id == f"{entry.entry_id}_weather_erd"

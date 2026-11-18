@@ -146,12 +146,12 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
         Its unique ID contains the location, like in HA-Idokep.
         """
-        old_id, new_id = (
-            weather_unique_id(entry_id, old),
-            weather_unique_id(entry_id, new),
-        )
-        if old_id == new_id:
-            return
         registry = er.async_get(self.hass)
-        if entity_id := registry.async_get_entity_id("weather", DOMAIN, old_id):
+        entity_id = registry.async_get_entity_id(
+            "weather", DOMAIN, weather_unique_id(entry_id, old)
+        )
+        if entity_id is None:
+            return
+        new_id = weather_unique_id(entry_id, new)
+        if registry.async_get(entity_id).unique_id != new_id:
             registry.async_update_entity(entity_id, new_unique_id=new_id)

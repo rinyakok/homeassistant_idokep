@@ -222,8 +222,9 @@ def parse_location_name(soup: BeautifulSoup) -> str | None:
     title = soup.find("title")
     if title is None:
         return None
-    match = re.match(r"\s*(.+?)\s+időjárás\b", title.get_text())
-    return match.group(1) if match else None
+    text = " ".join(title.get_text().split())
+    place, separator, _ = text.partition(" időjárás")
+    return place if separator and place else None
 
 
 def _parse_sun_times(
