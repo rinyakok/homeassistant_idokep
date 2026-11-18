@@ -1,0 +1,29 @@
+{
+  "entity": {
+    "sensor": {
+      "condition": {
+        "default": "mdi:weather-partly-cloudy"
+      },
+      "condition_hu": {
+        "default": "mdi:weather-partly-cloudy"
+      },
+      "short_forecast": {
+        "default": "mdi:weather-cloudy-clock"
+      },
+      "sunrise": {
+        "default": "mdi:weather-sunset-up"
+      },
+      "sunset": {
+        "default": "mdi:weather-sunset-down"
+      }
+    },
+    "binary_sensor": {
+      "storm_expected_1h": {
+        "default": "mdi:weather-lightning",
+        "state": {
+          "off": "mdi:weather-partly-cloudy"
+        }
+      }
+    }
+  }
+}

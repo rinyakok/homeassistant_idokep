@@ -25,12 +25,16 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_API_CONDITION,
+    ATTR_API_CONDITION_HU,
     ATTR_API_CURRENT,
     ATTR_API_DAILY_FORECAST,
     ATTR_API_HOURLY_FORECAST,
     ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
+    ATTR_API_SHORT_FORECAST,
+    ATTR_API_SUNRISE,
+    ATTR_API_SUNSET,
     BASE_IDOKEP_URL,
     CONF_LOCATION,
     DEFAULT_LOCATION,
@@ -278,15 +282,15 @@ def _parse_current(
     sunrise: datetime | None,
     sunset: datetime | None,
 ) -> dict:
-    """Parse the current condition and temperature."""
+    """Parse the current weather of the place."""
     condition = None
+    condition_hu = None
     temperature = None
 
     weather_div = soup.find("div", attrs={"class": "current-weather"})
     if weather_div is not None:
-        condition = _night_condition(
-            map_condition(weather_div.get_text()), now, sunrise, sunset
-        )
+        condition_hu = " ".join(weather_div.get_text().split()) or None
+        condition = _night_condition(map_condition(condition_hu), now, sunrise, sunset)
     else:
         _LOGGER.warning("Current weather condition not found on idokep.hu page")
 
@@ -298,9 +302,27 @@ def _parse_current(
 
     return {
         ATTR_API_CONDITION: condition,
+        ATTR_API_CONDITION_HU: condition_hu,
         ATTR_API_NATIVE_TEMPERATURE: temperature,
         ATTR_API_NATIVE_TEMPERATURE_UNIT: UnitOfTemperature.CELSIUS,
+        ATTR_API_SHORT_FORECAST: _parse_short_forecast(soup),
+        ATTR_API_SUNRISE: sunrise,
+        ATTR_API_SUNSET: sunset,
     }
+
+
+def _parse_short_forecast(soup: BeautifulSoup) -> str | None:
+    """Return the short text forecast ("Kettősfronti hatás várható")."""
+    for selector in (
+        ".shortCurrentWeatherText .scTextDescription",
+        ".current-weather-short-desc",
+    ):
+        element = soup.select_one(selector)
+        if element is not None:
+            text = " ".join(element.get_text().split())
+            if text:
+                return text
+    return None
 
 
 def _parse_daily_column(

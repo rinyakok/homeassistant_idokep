@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -21,8 +22,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import IdokepConfigEntry
 from .const import (
     ATTR_API_CONDITION,
+    ATTR_API_CONDITION_HU,
     ATTR_API_CURRENT,
     ATTR_API_NATIVE_TEMPERATURE,
+    ATTR_API_SHORT_FORECAST,
+    ATTR_API_SUNRISE,
+    ATTR_API_SUNSET,
     ATTRIBUTION,
 )
 from .coordinator import WeatherUpdateCoordinator
@@ -33,7 +38,12 @@ from .entity import idokep_device_info
 class IdokepSensorEntityDescription(SensorEntityDescription):
     """Describes an Időkép sensor."""
 
-    value_fn: Callable[[dict[str, Any]], StateType]
+    value_fn: Callable[[dict[str, Any]], StateType | datetime]
+
+
+def _current(key: str) -> Callable[[dict[str, Any]], Any]:
+    """Return a function that reads one value of the current weather."""
+    return lambda data: data[ATTR_API_CURRENT].get(key)
 
 
 # The keys are part of the unique IDs; they match FabianGabor/HA-Idokep.
@@ -44,12 +54,34 @@ SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data[ATTR_API_CURRENT][ATTR_API_NATIVE_TEMPERATURE],
+        value_fn=_current(ATTR_API_NATIVE_TEMPERATURE),
     ),
     IdokepSensorEntityDescription(
         key="condition",
         translation_key="condition",
-        value_fn=lambda data: data[ATTR_API_CURRENT][ATTR_API_CONDITION],
+        value_fn=_current(ATTR_API_CONDITION),
+    ),
+    IdokepSensorEntityDescription(
+        key="condition_hu",
+        translation_key="condition_hu",
+        value_fn=_current(ATTR_API_CONDITION_HU),
+    ),
+    IdokepSensorEntityDescription(
+        key="short_forecast",
+        translation_key="short_forecast",
+        value_fn=_current(ATTR_API_SHORT_FORECAST),
+    ),
+    IdokepSensorEntityDescription(
+        key="sunrise",
+        translation_key="sunrise",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_current(ATTR_API_SUNRISE),
+    ),
+    IdokepSensorEntityDescription(
+        key="sunset",
+        translation_key="sunset",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_current(ATTR_API_SUNSET),
     ),
 )
 
@@ -86,6 +118,6 @@ class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
         self._attr_device_info = idokep_device_info(entry)
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the state of the sensor."""
         return self.entity_description.value_fn(self.coordinator.data)

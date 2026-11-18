@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.idokep import coordinator
+from custom_components.idokep.binary_sensor import storm_expected
 from custom_components.idokep.coordinator import (
     FetchWeatherData,
     generate_date,
@@ -78,8 +79,12 @@ async def test_current_weather(weather) -> None:
     """Current temperature and condition come from the current page."""
     assert weather["current"] == {
         "condition": "cloudy",
+        "condition_hu": "Erősen felhős",
         "native_temperature": 14,
         "native_temperature_unit": "°C",
+        "short_forecast": "Kettősfronti hatás várható",
+        "sunrise": datetime(2026, 11, 18, 6, 54, tzinfo=BUDAPEST),
+        "sunset": datetime(2026, 11, 18, 16, 5, tzinfo=BUDAPEST),
     }
 
 
@@ -217,3 +222,30 @@ def test_parse_location_name(title, expected) -> None:
 def test_parse_location_name_without_title() -> None:
     """A page without a title gives no place name."""
     assert coordinator.parse_location_name(BeautifulSoup("", "html.parser")) is None
+
+
+def _hour(start: str, condition: str) -> dict:
+    return {"datetime": start, "condition": condition}
+
+
+@pytest.mark.parametrize(
+    ("forecast", "expected"),
+    [
+        # A storm in the current hour (started 30 minutes ago).
+        ([_hour("2026-11-18T13:00:00+01:00", "lightning-rainy")], True),
+        # A storm starting in 45 minutes.
+        ([_hour("2026-11-18T14:15:00+01:00", "lightning")], True),
+        # A storm in two hours is not "next hour".
+        ([_hour("2026-11-18T15:30:00+01:00", "lightning")], False),
+        # A storm that ended.
+        ([_hour("2026-11-18T12:00:00+01:00", "lightning")], False),
+        # Rain is not a storm.
+        ([_hour("2026-11-18T14:00:00+01:00", "rainy")], False),
+        # Broken entries are ignored.
+        ([{"condition": "lightning"}, _hour("x", "lightning")], False),
+    ],
+)
+def test_storm_expected(forecast, expected) -> None:
+    """Thunderstorm within the next hour (the HA conditions, not the text)."""
+    now = datetime(2026, 11, 18, 13, 30, tzinfo=BUDAPEST)
+    assert storm_expected(forecast, now, timedelta(hours=1)) is expected

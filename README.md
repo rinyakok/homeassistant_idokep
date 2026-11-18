@@ -7,7 +7,8 @@ Weather data and forecasts from [idokep.hu](https://www.idokep.hu) for places in
 ## Features
 
 - Weather entity with current conditions, a 15-day daily forecast and a 36-hour hourly forecast (temperature, wind, precipitation)
-- Temperature and condition sensors
+- Sensors: temperature, condition (also in Hungarian), short text forecast, sunrise, sunset
+- Binary sensors: thunderstorm in the next hour, connection to idokep.hu
 - Any number of locations, one device per location
 - English and Hungarian user interface
 
@@ -34,6 +35,15 @@ To change a place later, use **Reconfigure** on the integration entry. Entity ID
 | `weather.idokep_erd` | Current weather, daily and hourly forecast |
 | `sensor.idokep_erd_temperature` | Current temperature (°C) |
 | `sensor.idokep_erd_condition` | Current condition (Home Assistant condition, e.g. `rainy`) |
+| `sensor.idokep_erd_condition_hungarian` | Current condition as written on idokep.hu (e.g. "Erősen felhős") |
+| `sensor.idokep_erd_short_forecast` | Short text forecast (e.g. "Kettősfronti hatás várható") |
+| `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Today's sunrise and sunset |
+| `binary_sensor.idokep_erd_storm_in_the_next_hour` | On if a thunderstorm is forecast for the current or next hour |
+| `binary_sensor.idokep_erd_connection` | Off when idokep.hu can't be reached (diagnostic) |
+
+The weather entity also has the attributes `short_forecast`, `precipitation` and `precipitation_probability` (forecast for the next hour).
+
+Entity IDs follow your Home Assistant language when the entity is created; the examples are for English.
 
 ## Switching from FabianGabor/HA-Idokep
 

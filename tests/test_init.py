@@ -79,6 +79,14 @@ async def test_entities_of_a_new_location(hass: HomeAssistant, fake_idokep) -> N
     } == {
         f"{entry.entry_id}_temperature": "sensor.idokep_erd_temperature",
         f"{entry.entry_id}_condition": "sensor.idokep_erd_condition",
+        f"{entry.entry_id}_condition_hu": "sensor.idokep_erd_condition_hungarian",
+        f"{entry.entry_id}_short_forecast": "sensor.idokep_erd_short_forecast",
+        f"{entry.entry_id}_sunrise": "sensor.idokep_erd_sunrise",
+        f"{entry.entry_id}_sunset": "sensor.idokep_erd_sunset",
+        f"{entry.entry_id}_idokep_connectivity": "binary_sensor.idokep_erd_connection",
+        f"{entry.entry_id}_storm_expected_1h": (
+            "binary_sensor.idokep_erd_storm_in_the_next_hour"
+        ),
         f"{entry.entry_id}_weather_erd": "weather.idokep_erd",
     }
 
@@ -251,7 +259,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
     registry = er.async_get(hass)
     weather = registry.async_get("weather.idokep_erd")
     assert weather.unique_id == f"{entry.entry_id}_weather_gyor"
-    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 3
+    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 9
     assert hass.states.get("weather.idokep_erd") is not None
     assert fake_idokep.requested[-1].endswith("/elorejelzes/Győr")
 
@@ -293,3 +301,51 @@ async def test_reconfigure_same_place_other_spelling(
     assert entry.unique_id == "erd"
     weather = er.async_get(hass).async_get("weather.idokep_erd")
     assert weather.unique_id == f"{entry.entry_id}_weather_erd"
+
+
+# --- New sensors -------------------------------------------------------------
+
+
+async def test_new_sensor_states(hass: HomeAssistant, fake_idokep) -> None:
+    """Hungarian condition, short forecast, sun times and binary sensors."""
+    await _setup(hass)
+
+    assert hass.states.get("sensor.idokep_erd_condition_hungarian").state == (
+        "Erősen felhős"
+    )
+    assert hass.states.get("sensor.idokep_erd_short_forecast").state == (
+        "Kettősfronti hatás várható"
+    )
+    assert hass.states.get("sensor.idokep_erd_sunrise").state == (
+        "2026-11-18T05:54:00+00:00"
+    )
+    assert hass.states.get("sensor.idokep_erd_sunset").state == (
+        "2026-11-18T15:05:00+00:00"
+    )
+    assert hass.states.get("binary_sensor.idokep_erd_connection").state == "on"
+    assert (
+        hass.states.get("binary_sensor.idokep_erd_storm_in_the_next_hour").state
+        == "off"
+    )
+
+
+async def test_weather_extra_attributes(hass: HomeAssistant, fake_idokep) -> None:
+    """Short forecast and the rain of the current hour, as in HA-Idokep."""
+    await _setup(hass)
+
+    attributes = hass.states.get("weather.idokep_erd").attributes
+    assert attributes["short_forecast"] == "Kettősfronti hatás várható"
+    assert attributes["precipitation"] == 0.0
+    assert attributes["precipitation_probability"] == 0
+
+
+async def test_connection_sensor_turns_off(hass: HomeAssistant, fake_idokep) -> None:
+    """When updates fail, the connection sensor is off but still available."""
+    entry = await _setup(hass)
+    fake_idokep.error = aiohttp.ClientConnectionError("no network")
+
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("binary_sensor.idokep_erd_connection").state == "off"
+    assert hass.states.get("sensor.idokep_erd_temperature").state == "unavailable"

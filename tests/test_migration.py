@@ -87,11 +87,14 @@ async def test_migrate_single_location_entry(hass: HomeAssistant, fake_idokep) -
     assert entry.unique_id == "erd"
     assert entry.title == "Érd"
     # Same entity IDs as before, now with the new unique IDs, no extras.
-    assert _entities(hass, entry) == {
+    entities = _entities(hass, entry)
+    assert {
         "sensor.idokepweather_erd_temperature": "legacy_temperature",
         "sensor.idokepweather_erd_condition": "legacy_condition",
         "weather.idokepweather_erd_forecast": "legacy_weather_erd",
-    }
+    }.items() <= entities.items()
+    # No second copy of the old entities was created.
+    assert len(entities) == len(set(entities.values())) == 9
     assert hass.states.get("weather.idokepweather_erd_forecast").state == "cloudy"
     assert hass.states.get("sensor.idokepweather_erd_temperature").state == "14"
     # The device is kept (with its area), under the new identifier.
@@ -135,6 +138,15 @@ async def test_switch_from_ha_idokep(hass: HomeAssistant, fake_idokep) -> None:
     _register(hass, entry, "sensor", "fabian_temperature", "idokep_temperature")
     _register(hass, entry, "sensor", "fabian_condition", "idokep_weather_condition")
     _register(hass, entry, "weather", "fabian_weather_erd", "idokep_erd")
+    _register(hass, entry, "sensor", "fabian_sunrise", "idokep_sunrise")
+    _register(hass, entry, "sensor", "fabian_condition_hu", "idokep_condition_hu")
+    _register(
+        hass,
+        entry,
+        "binary_sensor",
+        "fabian_storm_expected_1h",
+        "idokep_storm_expected_in_next_hour",
+    )
 
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -142,11 +154,22 @@ async def test_switch_from_ha_idokep(hass: HomeAssistant, fake_idokep) -> None:
     assert entry.state is ConfigEntryState.LOADED
     assert entry.version == 2
     assert entry.data == {"location": "Érd"}
-    assert _entities(hass, entry) == {
+    entities = _entities(hass, entry)
+    assert {
         "sensor.idokep_temperature": "fabian_temperature",
         "sensor.idokep_weather_condition": "fabian_condition",
         "weather.idokep_erd": "fabian_weather_erd",
-    }
+        "sensor.idokep_sunrise": "fabian_sunrise",
+        "sensor.idokep_condition_hu": "fabian_condition_hu",
+        "binary_sensor.idokep_storm_expected_in_next_hour": (
+            "fabian_storm_expected_1h"
+        ),
+    }.items() <= entities.items()
+    assert len(entities) == 9
+    assert hass.states.get("sensor.idokep_sunrise").state == (
+        "2026-11-18T05:54:00+00:00"
+    )
+    assert hass.states.get("sensor.idokep_condition_hu").state == "Erősen felhős"
     assert hass.states.get("weather.idokep_erd").state == "cloudy"
     assert hass.states.get("sensor.idokep_temperature").state == "14"
     assert _device(hass, "fabian").id == (device.id)
