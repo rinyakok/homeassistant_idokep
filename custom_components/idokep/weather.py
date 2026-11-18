@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-# ============================ TO REMOVE ===================================
-import logging
-
 from homeassistant.components.weather import (
     Forecast,
     SingleCoordinatorWeatherEntity,
@@ -21,7 +18,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-# from . import OpenweathermapConfigEntry
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CURRENT,
@@ -37,9 +33,6 @@ from .const import (
     MANUFACTURER,
 )
 from .coordinator import WeatherUpdateCoordinator
-
-_LOGGER = logging.getLogger(__name__)
-# ============================ TO REMOVE ===================================
 
 
 async def async_setup_entry(

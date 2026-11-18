@@ -132,3 +132,23 @@ async def test_second_entry_is_rejected(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_reconfigure_changes_location(
+    hass: HomeAssistant, fake_idokep, freezer
+) -> None:
+    """Reconfigure stores the new location and keeps the name."""
+    freezer.move_to(FIXTURE_TIME)
+    entry = await _setup(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"location_name": "Győr"}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data == {"name": "IdokepWeather", "location_name": "Győr"}
+    assert fake_idokep.requested[-1] == "https://www.idokep.hu/elorejelzes/Győr"
