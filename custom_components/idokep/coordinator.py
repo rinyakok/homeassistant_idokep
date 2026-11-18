@@ -39,7 +39,9 @@ from .const import (
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     BASE_IDOKEP_URL,
+    CONF_FORECAST_DAYS,
     CONF_LOCATION,
+    DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
     DOMAIN,
     USER_AGENT_TEMPLATE,
@@ -629,8 +631,13 @@ async def FetchWeatherData(
     local_tz: tzinfo,
     budapest_tz: tzinfo,
     request_headers: dict | None = None,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
 ) -> dict:
-    """Download and parse the current weather and the forecasts."""
+    """Download and parse the current weather and the forecasts.
+
+    With forecast_days=30 the daily forecast comes from the 30-day page,
+    which has the same layout as the 15-day forecast on the current page.
+    """
     if location is None:
         location = DEFAULT_LOCATION
 
@@ -651,6 +658,13 @@ async def FetchWeatherData(
     hourly = _parse_hourly(hourly_page, now, budapest_tz, local_tz, sunrise, sunset)
     alerts = _parse_alerts(current_page, hourly_page)
     hazards = _parse_hazards(current_page)
+
+    if forecast_days > DEFAULT_FORECAST_DAYS:
+        month_page = await _fetch_page(
+            session, f"{BASE_IDOKEP_URL}/30napos/{location}", request_headers
+        )
+        # Keep the 15 days if the 30-day page can't be read.
+        daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
@@ -726,6 +740,9 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 self.local_tz,
                 self.budapest_tz,
                 self.request_headers,
+                self.config_entry.options.get(
+                    CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
+                ),
             )
         except (aiohttp.ClientError, TimeoutError) as err:
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err

@@ -417,3 +417,35 @@ async def test_alert_sensors(hass: HomeAssistant, fake_idokep) -> None:
         ],
     }
     assert hass.states.get("binary_sensor.idokep_erd_red_alert").state == "on"
+
+
+# --- Options -----------------------------------------------------------------
+
+
+async def _daily_forecast(hass: HomeAssistant) -> list[dict]:
+    response = await hass.services.async_call(
+        "weather",
+        "get_forecasts",
+        {"entity_id": "weather.idokep_erd", "type": "daily"},
+        blocking=True,
+        return_response=True,
+    )
+    return response["weather.idokep_erd"]["forecast"]
+
+
+async def test_options_30_day_forecast(hass: HomeAssistant, fake_idokep) -> None:
+    """Choosing 30 days reloads the entry with a 30-day daily forecast."""
+    entry = await _setup(hass)
+    assert len(await _daily_forecast(hass)) == 15
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"forecast_days": "30"}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {"forecast_days": 30}
+    assert len(await _daily_forecast(hass)) == 30
+    assert any("/30napos/" in url for url in fake_idokep.requested)

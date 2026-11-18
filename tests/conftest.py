@@ -77,6 +77,7 @@ class FakeClientSession:
         self.pages = pages or {
             "/idojaras/": load_fixture("idojaras.html"),
             "/elorejelzes/": load_fixture("elorejelzes.html"),
+            "/30napos/": load_fixture("30napos.html"),
         }
         self.requested: list[str] = []
         self.headers: list[dict | None] = []

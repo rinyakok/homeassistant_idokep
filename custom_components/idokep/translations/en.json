@@ -76,5 +76,24 @@
         "name": "Red alert"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Időkép options",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update.",
+        "data": {
+          "forecast_days": "Daily forecast"
+        }
+      }
+    }
+  },
+  "selector": {
+    "forecast_days": {
+      "options": {
+        "15": "15 days",
+        "30": "30 days"
+      }
+    }
   }
 }

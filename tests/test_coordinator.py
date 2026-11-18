@@ -311,3 +311,40 @@ async def test_coloured_alerts(freezer) -> None:
 def test_alert_types(text, expected_type) -> None:
     """The alert type comes from the Hungarian text."""
     assert coordinator._alert_type(text) == expected_type
+
+
+async def test_30_day_forecast(freezer) -> None:
+    """With 30 days the daily forecast comes from the 30-day page."""
+    freezer.move_to(FIXTURE_TIME)
+    session = FakeClientSession()
+
+    data = await FetchWeatherData(session, "Érd", BUDAPEST, BUDAPEST, None, 30)
+
+    daily = data["daily_forecast"]
+    assert len(daily) == 30
+    assert daily[0]["datetime"] == "2026-11-18T00:00:00+01:00"
+    assert daily[-1]["datetime"] == "2026-12-17T00:00:00+01:00"
+    # min and max close together ("min-max-close"): still max, then min.
+    assert (daily[8]["temperature"], daily[8]["templow"]) == (3, 1)
+    assert session.requested[-1] == "https://www.idokep.hu/30napos/Érd"
+
+
+async def test_30_day_page_broken_keeps_15_days(freezer) -> None:
+    """If the 30-day page can't be read, the 15-day forecast is kept."""
+    freezer.move_to(FIXTURE_TIME)
+    session = FakeClientSession(
+        {
+            "/idojaras/": load_fixture("idojaras.html"),
+            "/elorejelzes/": load_fixture("elorejelzes.html"),
+            "/30napos/": "<html><body>átalakítás alatt</body></html>",
+        }
+    )
+
+    data = await FetchWeatherData(session, "Érd", BUDAPEST, BUDAPEST, None, 30)
+
+    assert len(data["daily_forecast"]) == 15
+
+
+async def test_15_days_downloads_two_pages(weather) -> None:
+    """The default needs no extra download."""
+    assert not any("/30napos/" in url for url in weather["session"].requested)
