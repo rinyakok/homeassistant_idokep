@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import aiohttp
 import pytest
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.idokep.const import DOMAIN
@@ -51,17 +53,11 @@ async def test_setup_and_unload(hass: HomeAssistant, fake_idokep, freezer) -> No
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "Known bug: sensor setup removes every registry entry of the config "
-        "entry, so the weather entity disappears when it registers first."
-    ),
-)
+@pytest.mark.parametrize("run", range(5))
 async def test_weather_entity_survives_setup(
-    hass: HomeAssistant, fake_idokep, freezer
+    hass: HomeAssistant, fake_idokep, freezer, run
 ) -> None:
-    """The weather entity always exists after setup."""
+    """The weather entity always exists after setup (was a race before)."""
     freezer.move_to(FIXTURE_TIME)
     await _setup(hass)
 
@@ -70,6 +66,41 @@ async def test_weather_entity_survives_setup(
     assert weather[0].entity_id == "weather.idokepweather_erd_forecast"
     assert weather[0].state == "cloudy"
     assert weather[0].attributes["temperature"] == 14
+
+
+async def test_entity_settings_survive_reload(
+    hass: HomeAssistant, fake_idokep, freezer
+) -> None:
+    """User changes to entities (here: a new name) are kept on reload."""
+    freezer.move_to(FIXTURE_TIME)
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    registry.async_update_entity(
+        "sensor.idokepweather_erd_temperature", name="Kinti hőmérséklet"
+    )
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity = registry.async_get("sensor.idokepweather_erd_temperature")
+    assert entity is not None
+    assert entity.name == "Kinti hőmérséklet"
+
+
+async def test_connection_error_retries_setup(
+    hass: HomeAssistant, fake_idokep, freezer
+) -> None:
+    """A network error makes Home Assistant retry later instead of crashing."""
+    freezer.move_to(FIXTURE_TIME)
+
+    def broken_get(*args, **kwargs):
+        raise aiohttp.ClientConnectionError("no network")
+
+    fake_idokep.get = broken_get
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 async def test_user_flow_creates_entry(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +23,9 @@ class FakeResponse:
     def __init__(self, text: str) -> None:
         self._text = text
 
+    def raise_for_status(self) -> None:
+        return None
+
     async def text(self) -> str:
         return self._text
 
@@ -37,27 +39,21 @@ class FakeResponse:
 class FakeClientSession:
     """Serves the saved pages instead of calling idokep.hu."""
 
-    pages = {
-        "/idojaras/": "idojaras.html",
-        "/elorejelzes/": "elorejelzes.html",
-    }
-    requested: list[str] = []
+    def __init__(self, pages: dict[str, str] | None = None) -> None:
+        self.pages = pages or {
+            "/idojaras/": load_fixture("idojaras.html"),
+            "/elorejelzes/": load_fixture("elorejelzes.html"),
+        }
+        self.requested: list[str] = []
+        self.headers: list[dict | None] = []
 
-    def __init__(self, *args, **kwargs) -> None:
-        self.headers = kwargs.get("headers")
-
-    def get(self, url: str) -> FakeResponse:
-        FakeClientSession.requested.append(url)
-        for part, fixture in self.pages.items():
+    def get(self, url: str, headers=None, timeout=None) -> FakeResponse:
+        self.requested.append(url)
+        self.headers.append(headers)
+        for part, page in self.pages.items():
             if part in url:
-                return FakeResponse(load_fixture(fixture))
+                return FakeResponse(page)
         raise AssertionError(f"Unexpected URL: {url}")
-
-    async def __aenter__(self) -> FakeClientSession:
-        return self
-
-    async def __aexit__(self, *exc) -> None:
-        return None
 
 
 @pytest.fixture(autouse=True)
@@ -67,13 +63,11 @@ def enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
-def fake_idokep(monkeypatch):
+def fake_idokep(monkeypatch) -> FakeClientSession:
     """Answer idokep.hu requests from the saved pages."""
-    FakeClientSession.requested = []
-    # Replace only the integration's view of aiohttp, not the real module,
-    # so Home Assistant itself keeps its normal HTTP client.
+    session = FakeClientSession()
     monkeypatch.setattr(
-        "custom_components.idokep.coordinator.aiohttp",
-        SimpleNamespace(ClientSession=FakeClientSession),
+        "custom_components.idokep.coordinator.async_get_clientsession",
+        lambda hass: session,
     )
-    return FakeClientSession
+    return session

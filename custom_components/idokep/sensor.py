@@ -12,7 +12,6 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -60,11 +59,6 @@ async def async_setup_entry(
     unique_id = config_entry.unique_id
     assert unique_id is not None
     weather_coordinator = domain_data.coordinator
-
-    entity_registry = er.async_get(hass)
-    entries = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
-    for entry in entries:
-        entity_registry.async_remove(entry.entity_id)
 
     name_part_location = config_entry.data.get(ATTR_API_LOCATION)
     async_add_entities(

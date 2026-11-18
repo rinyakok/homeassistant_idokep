@@ -1,12 +1,13 @@
 """Weather data coordinator for the Idokep Weather service."""
 
+from __future__ import annotations
+
 import logging
 import re
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 
 import aiohttp
-import pytz
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup, Comment, Tag
 from homeassistant.components.weather import (
     Forecast,
     WeatherEntityFeature,
@@ -16,8 +17,10 @@ from homeassistant.const import (
 )
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.loader import async_get_integration
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_API_CONDITION,
@@ -35,8 +38,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 WEATHER_UPDATE_INTERVAL = timedelta(minutes=20)
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+BUDAPEST_TZ_NAME = "Europe/Budapest"
 
-# =========================== SAJAT KÓD ========================================
+# Exceptions that mean "this part of the page is missing or has changed".
+PARSE_ERRORS = (AttributeError, IndexError, KeyError, TypeError, ValueError)
 
 weather_conditions = {
     "napos": "sunny",
@@ -53,6 +59,8 @@ weather_conditions = {
     "eső viharos széllel": "rainy",
     # The following conditions shall be tested/confirmed
     "köd": "fog",
+    "ködös": "fog",
+    "ködszitálás": "fog",
     "párás": "fog",
     "pára": "fog",
     "villámlás": "lightning",
@@ -69,10 +77,7 @@ weather_conditions = {
     "ónos eső": "snowy-rainy",
     "szeles": "windy",
     "száraz zivatar": "lightning",
-    # Not mapped
-    # clear-night	Clear night
-    # exceptional	Exceptional
-    # windy-variant	Wind and clouds
+    "porvihar": "exceptional",
 }
 
 wind_mapping = {
@@ -91,337 +96,408 @@ wind_mapping = {
     "orkán": 118,  # (115-120 km/h)
 }
 
+HUNGARIAN_MONTHS = {
+    "január": 1,
+    "február": 2,
+    "március": 3,
+    "április": 4,
+    "május": 5,
+    "június": 6,
+    "július": 7,
+    "augusztus": 8,
+    "szeptember": 9,
+    "október": 10,
+    "november": 11,
+    "december": 12,
+}
+
+# Unknown condition texts already logged, so each one is logged only once.
+_unknown_conditions: set[str] = set()
+
+
+def map_condition(text: str | None) -> str | None:
+    """Map an idokep.hu condition text to a Home Assistant condition.
+
+    Unknown texts return None (state "unknown") instead of an invalid
+    condition, and are logged once so they can be added to the mapping.
+    """
+    if not text:
+        return None
+    key = " ".join(text.split()).lower()
+    condition = weather_conditions.get(key)
+    if condition is None and key not in _unknown_conditions:
+        _unknown_conditions.add(key)
+        _LOGGER.warning(
+            "Unknown idokep.hu weather condition %r, please report it so it can "
+            "be mapped",
+            key,
+        )
+    return condition
+
+
+class MissingElementError(ValueError):
+    """An expected element is not on the idokep.hu page."""
+
+
+def _find_optional(
+    parent: Tag, name: str, recursive: bool = True, **attrs
+) -> Tag | None:
+    """Find a child element; None if it is not on the page."""
+    if "class_" in attrs:
+        attrs["class"] = attrs.pop("class_")
+    found = parent.find(name, attrs=attrs, recursive=recursive)
+    return found if isinstance(found, Tag) else None
+
+
+def _find(parent: Tag, name: str, recursive: bool = True, **attrs) -> Tag:
+    """Find a child element, or raise MissingElementError if it is missing."""
+    found = _find_optional(parent, name, recursive, **attrs)
+    if found is None:
+        raise MissingElementError(f"<{name} {attrs}> not found")
+    return found
+
+
+def _text(element: Tag | None) -> str | None:
+    """Return the text of an optional element."""
+    return element.get_text() if element is not None else None
+
+
+def _first_int(text: str | None) -> int | None:
+    """Return the first (possibly negative) whole number in a text."""
+    match = re.search(r"-?\d+", text or "")
+    return int(match.group()) if match else None
+
+
+def _first_float(text: str | None) -> float | None:
+    """Return the first number in a text, accepting a decimal comma."""
+    match = re.search(r"\d+(?:[.,]\d+)?", text or "")
+    return float(match.group().replace(",", ".")) if match else None
+
 
 # ============== Generate forecast date from a day of month ================
-def generate_date(forecast_day):
-    # Get today's date
-    today = datetime.today()
-    day = today.day
-    month = today.month
-    year = today.year
+def generate_date(forecast_day: int, today: date | None = None) -> date | None:
+    """Return the date for a day of month, on or after today.
 
-    # Check if the input day is less than today's day
-    if forecast_day < day:
-        # Move to the next month
-        if month == 12:  # December, next month is January of next year
-            month = 1
-            year += 1
-        else:
-            month += 1
-
-    # Create the new date
+    A day lower than today's day belongs to the next month. Returns None if
+    the day does not exist in that month.
+    """
+    if today is None:
+        today = dt_util.now(dt_util.get_default_time_zone()).date()
+    year, month = today.year, today.month
+    if forecast_day < today.day:
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
     try:
-        generated_date = datetime(year, month, forecast_day)
+        return date(year, month, forecast_day)
     except ValueError:
-        _LOGGER.error(f"Invalid day_of_month: {forecast_day} for the month {month}")
-        return f"Invalid day_of_month: {forecast_day} for the month {month}"
+        _LOGGER.warning(
+            "Invalid day of month %s for month %s, day skipped", forecast_day, month
+        )
+        return None
 
-    return generated_date
+
+def _parse_title_date(title: str | None) -> date | None:
+    """Parse a daily column title like 'Szerda<br>2026. november 18.'."""
+    match = re.search(r"(\d{4})\.\s*([^\W\d_]+)\s+(\d{1,2})\.", title or "")
+    if not match:
+        return None
+    month = HUNGARIAN_MONTHS.get(match.group(2).lower())
+    if month is None:
+        return None
+    try:
+        return date(int(match.group(1)), month, int(match.group(3)))
+    except ValueError:
+        return None
+
+
+def _parse_sun_times(
+    soup: BeautifulSoup, today: date, budapest_tz: tzinfo
+) -> tuple[datetime | None, datetime | None]:
+    """Return today's sunrise and sunset, or None when not on the page."""
+    result: list[datetime | None] = []
+    for icon, alt in (("sunrise", "Napkelte"), ("sunset", "Napnyugta")):
+        img = soup.find("img", src=re.compile(rf"{icon}\.svg")) or soup.find(
+            "img", alt=alt
+        )
+        match = re.search(r"(\d{1,2}):(\d{2})", img.parent.get_text()) if img else None
+        if match is None:
+            _LOGGER.debug("No %s time found on the page", icon)
+            result.append(None)
+            continue
+        result.append(
+            datetime.combine(
+                today,
+                time(int(match.group(1)), int(match.group(2))),
+                tzinfo=budapest_tz,
+            )
+        )
+    return result[0], result[1]
+
+
+def _is_night(
+    moment: datetime, sunrise: datetime | None, sunset: datetime | None
+) -> bool:
+    """Return True if the time of day is before sunrise or after sunset."""
+    if sunrise is None or sunset is None:
+        return False
+    return moment.time() > sunset.time() or moment.time() < sunrise.time()
+
+
+def _night_condition(
+    condition: str | None,
+    moment: datetime,
+    sunrise: datetime | None,
+    sunset: datetime | None,
+) -> str | None:
+    """Use clear-night instead of sunny at night."""
+    if condition == "sunny" and _is_night(moment, sunrise, sunset):
+        return "clear-night"
+    return condition
+
+
+def _parse_current(
+    soup: BeautifulSoup,
+    now: datetime,
+    sunrise: datetime | None,
+    sunset: datetime | None,
+) -> dict:
+    """Parse the current condition and temperature."""
+    condition = None
+    temperature = None
+
+    weather_div = soup.find("div", attrs={"class": "current-weather"})
+    if weather_div is not None:
+        condition = _night_condition(
+            map_condition(weather_div.get_text()), now, sunrise, sunset
+        )
+    else:
+        _LOGGER.warning("Current weather condition not found on idokep.hu page")
+
+    temperature_div = soup.find("div", attrs={"class": "ik current-temperature"})
+    if temperature_div is not None:
+        temperature = _first_int(temperature_div.get_text())
+    else:
+        _LOGGER.warning("Current temperature not found on idokep.hu page")
+
+    return {
+        ATTR_API_CONDITION: condition,
+        ATTR_API_NATIVE_TEMPERATURE: temperature,
+        ATTR_API_NATIVE_TEMPERATURE_UNIT: UnitOfTemperature.CELSIUS,
+    }
+
+
+def _parse_daily_column(
+    column: Tag, today: date, budapest_tz: tzinfo, local_tz: tzinfo
+) -> Forecast | None:
+    """Parse one daily forecast column."""
+    icon_link = _find(_find(column, "div", class_="ik dfIconAlert"), "a")
+
+    # The full date is in the title ("Szerda<br>2026. november 18."). The day
+    # number is only a fallback, because it can't tell the month on its own.
+    forecast_date = _parse_title_date(icon_link.get("title"))
+    if forecast_date is None:
+        day_span = _find(column, "span", class_=re.compile("dfDayNum"))
+        forecast_date = generate_date(int(day_span.get_text()), today)
+    if forecast_date is None:
+        return None
+
+    description = re.search(
+        r"<div[^>]*>\s*<img[^>]*>\s*([^<]+)", icon_link.get("data-bs-content", "")
+    )
+    condition = map_condition(description.group(1) if description else None)
+
+    links = _find(column, "div", class_="ik min-max-container").find_all("a")
+    temperature_max = _first_int(links[0].get_text())
+    temperature_min = _first_int(links[1].get_text()) if len(links) > 1 else None
+
+    # "17 mm" when an amount is forecast; "." means only a trace.
+    precipitation = 0.0
+    rain = column.find("div", attrs={"class": "ik rainlevel-container"})
+    if rain is not None:
+        amount = rain.find("span", attrs={"class": "ik mm"})
+        if amount is not None:
+            precipitation = _first_float(amount.get_text()) or 0.0
+
+    forecast_datetime = datetime.combine(
+        forecast_date, time(0, 0), tzinfo=budapest_tz
+    ).astimezone(local_tz)
+
+    return Forecast(
+        datetime=forecast_datetime.isoformat(),
+        condition=condition,
+        temperature=temperature_max,
+        templow=temperature_min,
+        precipitation=precipitation,
+    )
+
+
+def _parse_daily(
+    soup: BeautifulSoup, today: date, budapest_tz: tzinfo, local_tz: tzinfo
+) -> list[Forecast]:
+    """Parse the daily forecast; a broken column is skipped, not fatal."""
+    container = soup.find("div", attrs={"id": "dailyForecastContainer"})
+    if container is None:
+        _LOGGER.warning("Daily forecast not found on idokep.hu page")
+        return []
+
+    forecasts = []
+    for column in container.find_all("div", attrs={"class": "dailyForecastCol"}):
+        try:
+            forecast = _parse_daily_column(column, today, budapest_tz, local_tz)
+        except PARSE_ERRORS as err:
+            _LOGGER.debug("Skipping daily forecast column: %r", err)
+            continue
+        if forecast is not None:
+            forecasts.append(forecast)
+    return forecasts
+
+
+def _parse_hourly_card(
+    card: Tag,
+    hour: int,
+    forecast_day: date,
+    budapest_tz: tzinfo,
+    local_tz: tzinfo,
+    sunrise: datetime | None,
+    sunset: datetime | None,
+) -> Forecast:
+    """Parse one hourly forecast card for the given day."""
+    forecast_datetime = datetime.combine(
+        forecast_day, time(hour, 0), tzinfo=budapest_tz
+    )
+
+    icon_container = _find(card, "div", False, class_="ik forecast-icon-container")
+    icon_link = _find(icon_container, "a", False)
+    condition = _night_condition(
+        map_condition(icon_link.get("data-bs-content")),
+        forecast_datetime,
+        sunrise,
+        sunset,
+    )
+
+    temperature_bar = _find(card, "div", False, class_="ik tempBarGraph")
+    temperature_value = _find(temperature_bar, "div", False, class_="ik tempValue")
+    temperature = _first_int(_find(temperature_value, "a", False).get_text())
+
+    # Wind force is the last CSS class (e.g. 'gyenge'), the direction is in
+    # the style attribute: style="--rotateAngle:158deg"
+    wind_speed = None
+    wind_bearing = None
+    wind_link = _find(_find(card, "div", False, class_="ik hourly-wind"), "a", False)
+    wind_div = _find_optional(wind_link, "div", False)
+    if wind_div is not None:
+        wind_classes = wind_div.get_attribute_list("class")
+        wind_speed = wind_mapping.get(wind_classes[-1]) if wind_classes else None
+        style = str(wind_div.attrs.get("style", ""))
+        rotate = re.search(r"--rotateAngle:\s*(\d+)deg", style)
+        wind_bearing = int(rotate.group(1)) if rotate else None
+
+    # The precipitation amount is in an HTML comment ("<!--7 mm-->").
+    precipitation = 0.0
+    precipitation_probability = 0
+    rain_level = card.find("div", attrs={"class": "ik hourly-rainlevel"})
+    if rain_level is not None:
+        comment = rain_level.find(string=lambda text: isinstance(text, Comment))
+        precipitation = _first_float(comment) or 0.0
+        chance = _find_optional(card, "div", False, class_="ik hourly-rain-chance")
+        precipitation_probability = _first_int(_text(chance))
+
+    return Forecast(
+        datetime=forecast_datetime.astimezone(local_tz).isoformat(),
+        condition=condition,
+        temperature=temperature,
+        wind_speed=wind_speed,
+        wind_bearing=wind_bearing,
+        precipitation_probability=precipitation_probability,
+        precipitation=precipitation,
+    )
+
+
+def _parse_hourly(
+    soup: BeautifulSoup,
+    now: datetime,
+    budapest_tz: tzinfo,
+    local_tz: tzinfo,
+    sunrise: datetime | None,
+    sunset: datetime | None,
+) -> list[Forecast]:
+    """Parse the hourly forecast; a broken card is skipped, not fatal."""
+    forecasts = []
+    forecast_day = now.date()
+    previous_hour = now.hour
+
+    for card in soup.find_all("div", attrs={"class": "wide-hourly-forecast-card"}):
+        try:
+            hour_div = _find(card, "div", False, class_="ik wide-hourly-forecast-hour")
+            hour = int(hour_div.get_text().strip()[0:-3])
+        except PARSE_ERRORS as err:
+            _LOGGER.debug("Skipping hourly forecast card: %r", err)
+            continue
+
+        # A lower hour than the previous card means the next day started.
+        if hour < previous_hour:
+            forecast_day += timedelta(days=1)
+        previous_hour = hour
+
+        try:
+            forecasts.append(
+                _parse_hourly_card(
+                    card, hour, forecast_day, budapest_tz, local_tz, sunrise, sunset
+                )
+            )
+        except PARSE_ERRORS as err:
+            _LOGGER.debug("Skipping hourly forecast card: %r", err)
+    return forecasts
+
+
+async def _fetch_page(
+    session: aiohttp.ClientSession, url: str, request_headers: dict | None
+) -> BeautifulSoup:
+    """Download one idokep.hu page."""
+    async with session.get(
+        url, headers=request_headers, timeout=REQUEST_TIMEOUT
+    ) as response:
+        response.raise_for_status()
+        return BeautifulSoup(await response.text(), "html.parser")
 
 
 # ======================= Fetch Forecast data ============================
 async def FetchWeatherData(
-    location, local_tz=None, budapest_tz=None, request_headers=None
-):
-
+    session: aiohttp.ClientSession,
+    location: str | None,
+    local_tz: tzinfo,
+    budapest_tz: tzinfo,
+    request_headers: dict | None = None,
+) -> dict:
+    """Download and parse the current weather and the forecasts."""
     if location is None:
         location = DEFAULT_LOCATION
 
-    hourly_forecast_url = BASE_IDOKEP_URL + "/elorejelzes/" + location
-    actual_weather_url = BASE_IDOKEP_URL + "/idojaras/" + location
+    _LOGGER.debug("Fetching data for location: %s", location)
+    now = datetime.now(budapest_tz)
 
-    _LOGGER.debug("Fetching data for location: " + location)
-    _LOGGER.debug(hourly_forecast_url)
+    current_page = await _fetch_page(
+        session, f"{BASE_IDOKEP_URL}/idojaras/{location}", request_headers
+    )
+    sunrise, sunset = _parse_sun_times(current_page, now.date(), budapest_tz)
+    current = _parse_current(current_page, now, sunrise, sunset)
+    daily = _parse_daily(current_page, now.date(), budapest_tz, local_tz)
 
-    # Get current Hungary time:
-    hungary_time = datetime.now(budapest_tz)
-    _LOGGER.debug("Hungary Current Time: " + str(hungary_time))
+    hourly_page = await _fetch_page(
+        session, f"{BASE_IDOKEP_URL}/elorejelzes/{location}", request_headers
+    )
+    hourly = _parse_hourly(hourly_page, now, budapest_tz, local_tz, sunrise, sunset)
 
-    # ====================== GETTING ACTUAL WEATHER ==================================
+    if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
+        raise UpdateFailed(
+            f"No weather data found on idokep.hu for {location!r}; "
+            "the location may be wrong or the website has changed"
+        )
 
-    async with aiohttp.ClientSession(headers=request_headers) as session:
-        async with session.get(actual_weather_url) as response:
-            html_string = await response.text()
-            soup = BeautifulSoup(html_string, "html.parser")
-
-            # Get Sunrise & Sunset times
-            sunrise_txt = re.search(
-                r"\d{1,2}:\d{2}",
-                soup.find(
-                    "img", attrs={"src": "/assets/icons/sunrise.svg"}
-                ).parent.text,
-            ).group()
-            sunset_txt = re.search(
-                r"\d{1,2}:\d{2}",
-                soup.find("img", attrs={"src": "/assets/icons/sunset.svg"}).parent.text,
-            ).group()
-            sunrise = datetime.strptime(
-                hungary_time.strftime("%Y-%m-%d") + " " + sunrise_txt, "%Y-%m-%d %H:%M"
-            )
-            sunset = datetime.strptime(
-                hungary_time.strftime("%Y-%m-%d") + " " + sunset_txt, "%Y-%m-%d %H:%M"
-            )
-
-            # Get Weather data
-            actual_weather = soup.find(
-                "div", attrs={"class": "current-weather"}
-            ).text.lower()
-            actual_weather_icon = (
-                soup.find("div", attrs={"class": "current-weather-lockup"})
-                .find("img", attrs={"class": "ik forecast-bigicon"})
-                .get("src")
-            )
-            actual_temperature = soup.find(
-                "div", attrs={"class": "ik current-temperature"}
-            ).text.strip()
-            # Extract numeric temperature value (handles both '°C' and '℃' unit formats)
-            actual_temperature_value = re.search(r"-?\d+", actual_temperature).group()
-            # Mapped weather condition; if the key doesn't exist,
-            # the original text is returned
-            actual_weather_condition = weather_conditions.get(
-                actual_weather, actual_weather
-            )
-
-            # If current time is after sunset or before sunrise and the
-            # condition is sunny => change condition to clear night
-            if (hungary_time.time() > sunset.time()) or (
-                hungary_time.time() < sunrise.time()
-            ):
-                if actual_weather_condition == "sunny":
-                    actual_weather_condition = "clear-night"
-
-            _LOGGER.debug(
-                "Current Weather: "
-                + actual_temperature
-                + "  "
-                + actual_weather
-                + "   ("
-                + actual_weather_icon
-                + ")    "
-                + actual_weather_condition
-            )
-
-            # ====================== GETTING DAILY FORECAST DATA ======================
-            daily_forecast_cols = soup.find(
-                "div", attrs={"id": "dailyForecastContainer"}
-            ).find_all("div", attrs={"class": "dailyForecastCol"})
-
-            daily_forecast_list = []
-
-            for daily_data in daily_forecast_cols:
-                day = int(
-                    daily_data.find(
-                        "span", attrs={"class": re.compile("ik dfDayNum")}
-                    ).text
-                )
-                daily_forecast_date = generate_date(day)
-                weather_desc_pattern = r"<div[^>]*>\s*<img[^>]*>\s*([^<]+)"
-                weather_desc_match = re.search(
-                    weather_desc_pattern,
-                    daily_data.find("div", attrs={"class": "ik dfIconAlert"})
-                    .find("a")
-                    .attrs["data-bs-content"],
-                )
-                if weather_desc_match:
-                    daily_weather = weather_desc_match.group(1).strip()
-                daily_weather_condition = weather_conditions.get(
-                    daily_weather, daily_weather
-                )
-                daily_temperature_obj = daily_data.find(
-                    "div", attrs={"class": "ik min-max-container"}
-                ).find("a")
-                daily_temperature_max = daily_temperature_obj.text
-                daily_temperature_min = daily_temperature_obj.find_next("a").text
-                daily_rain_level_obj = daily_data.find(
-                    "div", attrs={"class": "ik rainlevel-container"}
-                )
-                if daily_rain_level_obj:
-                    search_number_regex_pattern = r"'[\d]+"
-                    rain_level = (
-                        re.search(
-                            search_number_regex_pattern,
-                            (daily_rain_level_obj.find("a").find("span")["class"])[1],
-                        )
-                        or 0
-                    )
-                else:
-                    rain_level = 0
-
-                _LOGGER.debug(
-                    "Date: "
-                    + str(daily_forecast_date)
-                    + "  "
-                    + str(daily_weather_condition)
-                    + " max temp: "
-                    + str(daily_temperature_max)
-                    + " min temp: "
-                    + str(daily_temperature_min)
-                    + " rain level: "
-                    + str(rain_level)
-                )
-
-                # Add forecast element to forecast list
-                daily_forecast_list.append(
-                    Forecast(
-                        datetime=daily_forecast_date.isoformat(),
-                        condition=daily_weather_condition,
-                        temperature=daily_temperature_max,
-                        templow=daily_temperature_min,
-                        precipitation=rain_level,
-                    )
-                )
-
-        # ====================== GETTING HOURLY FORECAST DATA ======================
-        async with session.get(hourly_forecast_url) as response:
-            html_string = await response.text()
-            soup = BeautifulSoup(html_string, "html.parser")
-
-            forecast_card_list = soup.find_all(
-                "div", attrs={"class": "wide-hourly-forecast-card"}
-            )
-
-            # Start hour for fetching the forecast data is the current hour in Hungary
-            start_hour = hungary_time.hour
-
-            hourly_forecast_list = []
-
-            for forecast_card in forecast_card_list:
-                forecast_hour_str = forecast_card.find(
-                    "div",
-                    attrs={"class": "ik wide-hourly-forecast-hour"},
-                    recursive=False,
-                ).text
-                forecast_hour = int(forecast_hour_str[0:-3])
-
-                # It's a next day forecast if forecast hour is less than
-                # hungary_time => need to increase date by 1 day
-                if forecast_hour < start_hour:
-                    hungary_time += timedelta(days=1)
-
-                start_hour = forecast_hour
-                # Combine start date and forecast hour to a datetime object
-                forecast_datetime = datetime.combine(
-                    hungary_time, time(forecast_hour, 0)
-                )
-                # Localize the datetime to Budapest timezone
-                forecast_datetime = budapest_tz.localize(forecast_datetime)
-                _LOGGER.debug(
-                    "Forecast Date Time in Budapest TZ: " + str(forecast_datetime)
-                )
-
-                forecast_weather_obj = forecast_card.find(
-                    "div",
-                    attrs={"class": "ik forecast-icon-container"},
-                    recursive=False,
-                ).find("a", recursive=False)
-                forecast_weather = forecast_weather_obj.get("data-bs-content")
-                _LOGGER.debug(
-                    "Forecast Weather Condition String: " + str(forecast_weather)
-                )
-                # Mapped weather condition; if the key doesn't exist,
-                # 'None' is returned
-                forecast_weather_condition = weather_conditions.get(
-                    forecast_weather, "None"
-                )
-
-                # If forecast time is after sunset or before sunrise and the
-                # condition is sunny => change condition to clear night
-                if (forecast_datetime.time() > sunset.time()) or (
-                    forecast_datetime.time() < sunrise.time()
-                ):
-                    if forecast_weather_condition == "sunny":
-                        forecast_weather_condition = "clear-night"
-
-                # Convert forecast time to the configured local timezone if it
-                # is different from the Budapest timezone
-                if local_tz != budapest_tz:
-                    forecast_datetime = forecast_datetime.astimezone(local_tz)
-                _LOGGER.debug(
-                    "Forecast Time in local Time Zone: " + str(forecast_datetime)
-                )
-
-                # get temperature value
-                forecast_temperature_value = (
-                    forecast_card.find(
-                        "div", attrs={"class": "ik tempBarGraph"}, recursive=False
-                    )
-                    .find("div", attrs={"class": "ik tempValue"}, recursive=False)
-                    .find("a", recursive=False)
-                    .get_text()
-                    .strip()
-                )
-
-                # ===== WIND ============
-
-                wind_div = (
-                    forecast_card.find(
-                        "div", attrs={"class": "ik hourly-wind"}, recursive=False
-                    )
-                    .find("a", recursive=False)
-                    .find("div", recursive=False)
-                )
-                # Get wind force string (last CSS class, e.g. 'gyenge')
-                forecast_wind_force_str = wind_div["class"][-1]
-                _LOGGER.debug("Wind force string: " + forecast_wind_force_str)
-                # Get wind direction from style attribute: style="--rotateAngle:158deg"
-                forecast_wind_direction = int(
-                    re.search(
-                        r"--rotateAngle:\s*(\d+)deg",
-                        wind_div.get("style", "--rotateAngle:0deg"),
-                    ).group(1)
-                )
-                # Get mapped wind speed from wind force string
-                forecast_wind_speed = wind_mapping.get(forecast_wind_force_str)
-                _LOGGER.debug("Wind direction: " + str(forecast_wind_direction))
-
-                # ===== RAIN =======
-                precipitation_obj = forecast_card.find(
-                    "div", attrs={"class": "ik hourly-rainlevel"}, recursive=True
-                )
-                if precipitation_obj is not None:
-                    # Precipitation value in comment :)
-                    precipitation_obj = precipitation_obj.find_all(
-                        string=lambda text: isinstance(text, Comment)
-                    )
-                    _precipitation = float(precipitation_obj[0][:-2]) or 0.0
-                    _LOGGER.debug(_precipitation)
-                    _precipitation_probability = (
-                        forecast_card.find(
-                            "div",
-                            attrs={"class": "ik hourly-rain-chance"},
-                            recursive=False,
-                        )
-                        .find("a", recursive=False)
-                        .get_text()[:-1]
-                    )
-                    _LOGGER.debug(_precipitation_probability)
-                else:
-                    _precipitation = 0.0
-                    _precipitation_probability = 0
-                # =================
-
-                # Add forecast element to forecast list
-                hourly_forecast_list.append(
-                    Forecast(
-                        datetime=forecast_datetime.isoformat(),
-                        condition=forecast_weather_condition,
-                        temperature=forecast_temperature_value,
-                        wind_speed=forecast_wind_speed,
-                        wind_bearing=forecast_wind_direction,
-                        precipitation_probability=_precipitation_probability,
-                        precipitation=_precipitation,
-                    )
-                )
-
-        return {
-            ATTR_API_CURRENT: {
-                ATTR_API_CONDITION: actual_weather_condition,
-                ATTR_API_NATIVE_TEMPERATURE: f"{actual_temperature_value}",
-                ATTR_API_NATIVE_TEMPERATURE_UNIT: UnitOfTemperature.CELSIUS,
-            },
-            ATTR_API_HOURLY_FORECAST: hourly_forecast_list,
-            ATTR_API_DAILY_FORECAST: daily_forecast_list,
-        }
+    return {
+        ATTR_API_CURRENT: current,
+        ATTR_API_HOURLY_FORECAST: hourly,
+        ATTR_API_DAILY_FORECAST: daily,
+    }
 
 
 # ==========================================================================
@@ -440,18 +516,11 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
         self._attr_supported_features = (
             WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
         )
-        self.local_tz = None
-        self.budapest_tz = None
-        self.request_headers = None
-        self.local_tz_name = "Europe/Budapest"
-        if (
-            hass
-            and hasattr(hass, "config")
-            and hasattr(hass.config, "time_zone")
-            and hass.config.time_zone
-        ):
-            self.local_tz_name = hass.config.time_zone
-        _LOGGER.debug("LOCAL TIMEZONE NAME: " + str(self.local_tz_name))
+        self.local_tz: tzinfo | None = None
+        self.budapest_tz: tzinfo | None = None
+        self.request_headers: dict | None = None
+        self.local_tz_name = hass.config.time_zone or BUDAPEST_TZ_NAME
+        _LOGGER.debug("Local time zone name: %s", self.local_tz_name)
 
         super().__init__(
             hass, _LOGGER, name=DOMAIN, update_interval=WEATHER_UPDATE_INTERVAL
@@ -459,15 +528,10 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Update the data."""
-        # Initialize timezones asynchronously if not already done
         if self.local_tz is None:
-            self.local_tz = await self.hass.async_add_executor_job(
-                pytz.timezone, self.local_tz_name
-            )
+            self.local_tz = await dt_util.async_get_time_zone(self.local_tz_name)
         if self.budapest_tz is None:
-            self.budapest_tz = await self.hass.async_add_executor_job(
-                pytz.timezone, "Europe/Budapest"
-            )
+            self.budapest_tz = await dt_util.async_get_time_zone(BUDAPEST_TZ_NAME)
 
         if self.request_headers is None:
             integration = await async_get_integration(self.hass, DOMAIN)
@@ -477,9 +541,15 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                     ha_version=HA_VERSION,
                 )
             }
-            _LOGGER.debug("Request User-Agent: " + self.request_headers["User-Agent"])
+            _LOGGER.debug("Request User-Agent: %s", self.request_headers["User-Agent"])
 
-        weather_data = await FetchWeatherData(
-            self._location, self.local_tz, self.budapest_tz, self.request_headers
-        )
-        return weather_data
+        try:
+            return await FetchWeatherData(
+                async_get_clientsession(self.hass),
+                self._location,
+                self.local_tz,
+                self.budapest_tz,
+                self.request_headers,
+            )
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err
