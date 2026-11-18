@@ -76,7 +76,12 @@ Entity IDs follow the Home Assistant language at the time the entity is created.
 
 ### 🔄 Switching from FabianGabor/HA-Idokep
 
-Both use the `idokep` domain, so only one can be installed. Remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same. ➡️ [Step-by-step guide (Hungarian)](#atallas)
+Both use the `idokep` domain, so only one can be installed.
+
+- **Home Assistant 2026.11 or newer** (HACS is now the built-in **Marketplace**): the Marketplace removes HA-Idokep only together with its integration entries. Write down your old entity IDs, use **Delete and uninstall** on HA-Idokep, install this integration, restart, add your places again, then rename the new entities to the old entity IDs. History and long-term statistics continue under the old IDs.
+- **Older Home Assistant with HACS:** remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same.
+
+➡️ [Step-by-step guide (Hungarian)](#atallas)
 
 ### 🚧 Limits
 
@@ -381,7 +386,24 @@ actions:
 
 ### 🔄 Átállás a HA-Idokep integrációról
 
-A [FabianGabor/HA-Idokep](https://github.com/FabianGabor/HA-Idokep) és ez az integráció ugyanazt az `idokep` azonosítót használja, ezért egyszerre csak az egyik lehet telepítve. Ez az integráció a HA-Idokep bejegyzéseit közvetlenül át tudja venni.
+A [FabianGabor/HA-Idokep](https://github.com/FabianGabor/HA-Idokep) és ez az integráció ugyanazt az `idokep` azonosítót használja, ezért egyszerre csak az egyik lehet telepítve. Az átállás attól függ, melyik Home Assistant verziót használod.
+
+#### Home Assistant 2026.11 vagy újabb (Marketplace)
+
+A HACS helyett itt a beépített **Marketplace** van. Ez a HA-Idokep-et csak a bejegyzéseivel együtt engedi eltávolítani, és amíg a HA-Idokep telepítve van, ezt az integrációt nem engedi telepíteni. Ezért a helyszíneket újra fel kell venni, az entitásokat pedig vissza kell nevezni a régi azonosítóra. Az előzmények és a hosszú távú statisztikák így megmaradnak.
+
+1. 📝 Írd fel a régi entitásazonosítókat: **Beállítások → Eszközök és szolgáltatások → Entitások**, keress rá: `idokep`. Jellemzően ilyenek: `weather.idokep_<hely>`, `sensor.idokep_temperature`, `sensor.idokep_weather_condition`, `binary_sensor.idokep_weather_alert`.
+2. 🗑️ **Beállítások → Marketplace →** nyisd meg az **Időkép** (FabianGabor) oldalát, a jobb felső **⋮** menüben válaszd az **Uninstall**, majd a **Delete and uninstall** pontot.
+3. 📦 Telepítsd ezt az integrációt (**Időkép Weather Component**), majd indítsd újra a Home Assistantet.
+4. 📍 **Integráció hozzáadása → Időkép**, és add meg ugyanazt a települést, mint korábban.
+5. ✏️ Az új entitásoknál (pl. `sensor.idokep_<hely>_temperature`) az entitás **Beállítások** ablakában írd át az **Entitásazonosítót** a régire (pl. `sensor.idokep_temperature`), majd **Frissítés**.
+
+> [!NOTE]
+> Átnevezéskor a naplóban ilyen figyelmeztetés jelenik meg: *„Cannot migrate history … because the new entity_id is already in use”*. Ez rendben van: a régi előzmények megmaradnak, csak az új azonosítón töltött néhány perc nem kerül át.
+
+A `weather` entitás azonosítója általában eleve egyezik, azt nem kell átnevezni. Az automatizálások és a vezérlőpultok a régi azonosítókkal tovább működnek.
+
+#### Régebbi Home Assistant HACS-szal
 
 1. 🗑️ A HACS-ban nyisd meg a **HA-Idokep**-et, és válaszd az **Eltávolítás** pontot.
 2. 🧹 Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS **Egyéni tárolók** listájából.
