@@ -39,6 +39,26 @@
       },
       "condition": {
         "name": "Időjárás"
+      },
+      "condition_hu": {
+        "name": "Időjárás (magyarul)"
+      },
+      "short_forecast": {
+        "name": "Rövid előrejelzés"
+      },
+      "sunrise": {
+        "name": "Napkelte"
+      },
+      "sunset": {
+        "name": "Napnyugta"
+      }
+    },
+    "binary_sensor": {
+      "idokep_connectivity": {
+        "name": "Kapcsolat"
+      },
+      "storm_expected_1h": {
+        "name": "Zivatar a következő órában"
       }
     }
   }

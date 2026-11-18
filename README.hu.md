@@ -7,7 +7,8 @@ Időjárási adatok és előrejelzés az [idokep.hu](https://www.idokep.hu)-ról
 ## Mit tud?
 
 - **Weather entitás:** aktuális időjárás, 15 napos napi és 36 órás óránkénti előrejelzés (hőmérséklet, szél, csapadék és csapadékesély)
-- **Szenzorok:** hőmérséklet és időjárási állapot
+- **Szenzorok:** hőmérséklet, időjárási állapot (magyarul is), rövid szöveges előrejelzés, napkelte, napnyugta
+- **Bináris szenzorok:** zivatar a következő órában, kapcsolat az idokep.hu-val
 - **Több helyszín:** tetszőleges számú település, mindegyik külön eszközként
 - **Magyar és angol felület**
 
@@ -44,6 +45,30 @@ Egy „Érd” nevű helyszínnél:
 | `weather.idokep_erd` | Aktuális időjárás, napi és óránkénti előrejelzés |
 | `sensor.idokep_erd_temperature` | Aktuális hőmérséklet (°C) |
 | `sensor.idokep_erd_condition` | Aktuális állapot Home Assistant formában (pl. `rainy`, `partlycloudy`) |
+| `sensor.idokep_erd_condition_hungarian` | Aktuális állapot úgy, ahogy az idokep.hu írja (pl. „Erősen felhős”) |
+| `sensor.idokep_erd_short_forecast` | Rövid szöveges előrejelzés (pl. „Kettősfronti hatás várható”) |
+| `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Mai napkelte és napnyugta |
+| `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |
+| `binary_sensor.idokep_erd_connection` | Kikapcsol, ha az idokep.hu nem érhető el (diagnosztikai) |
+
+A weather entitásnak további attribútumai is vannak: `short_forecast` (rövid előrejelzés), `precipitation` és `precipitation_probability` (a következő óra csapadéka és csapadékesélye).
+
+Az entitásazonosítók a Home Assistant nyelvét követik az entitás létrehozásakor. A fenti példák angol nyelvű Home Assistantre vonatkoznak; magyar nyelvnél például `sensor.idokep_erd_napkelte` lesz.
+
+**Zivatar szenzor példa** – értesítés, ha zivatar jön:
+
+```yaml
+automation:
+  - alias: "Zivatar érkezik"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.idokep_erd_storm_in_the_next_hour
+        to: "on"
+    actions:
+      - action: notify.notify
+        data:
+          message: "Zivatar várható a következő órában Érden."
+```
 
 Az előrejelzést a `weather.get_forecasts` művelettel lehet lekérni (`type: daily` vagy `type: hourly`).
 
@@ -74,7 +99,7 @@ A FabianGabor/HA-Idokep és ez az integráció ugyanazt az `idokep` azonosítót
 2. Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS-ból.
 3. Telepítsd ezt az integrációt a HACS-ból, majd indítsd újra a Home Assistantet.
 
-A meglévő bejegyzéseket az integráció automatikusan átveszi. A közös entitások (weather, hőmérséklet, állapot) azonosítója nem változik. Azok a HA-Idokep entitások, amelyek itt még nincsenek meg, egyelőre „nem elérhető” állapotúak lesznek.
+A meglévő bejegyzéseket az integráció automatikusan átveszi. A közös entitások (weather, hőmérséklet, állapot) azonosítója nem változik. A HA-Idokep napkelte, napnyugta, rövid előrejelzés, magyar állapot, zivatar és kapcsolat entitásai is megmaradnak. A figyelmeztetés (alert) entitások egyelőre „nem elérhető” állapotúak lesznek, amíg a figyelmeztetések ide is bekerülnek.
 
 ## Hogyan működik?
 

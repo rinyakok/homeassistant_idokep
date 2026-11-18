@@ -25,10 +25,14 @@ ATTR_API_LOCATION = "location"
 ATTR_API_NATIVE_TEMPERATURE = "native_temperature"
 ATTR_API_NATIVE_TEMPERATURE_UNIT = "native_temperature_unit"
 ATTR_API_CONDITION = "condition"
+ATTR_API_CONDITION_HU = "condition_hu"
+ATTR_API_SHORT_FORECAST = "short_forecast"
+ATTR_API_SUNRISE = "sunrise"
+ATTR_API_SUNSET = "sunset"
 ATTR_API_CURRENT = "current"
 ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
-PLATFORMS = [Platform.SENSOR, Platform.WEATHER]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
     "HomeAssistant-idokep/{integration_version} "

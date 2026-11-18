@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.weather import (
     Forecast,
     SingleCoordinatorWeatherEntity,
@@ -22,6 +24,7 @@ from .const import (
     ATTR_API_DAILY_FORECAST,
     ATTR_API_HOURLY_FORECAST,
     ATTR_API_NATIVE_TEMPERATURE,
+    ATTR_API_SHORT_FORECAST,
     ATTRIBUTION,
     CONF_LOCATION,
     weather_unique_id,
@@ -72,6 +75,22 @@ class IdokepWeather(SingleCoordinatorWeatherEntity[WeatherUpdateCoordinator]):
     def native_temperature(self) -> float | None:
         """Return the temperature."""
         return self.coordinator.data[ATTR_API_CURRENT][ATTR_API_NATIVE_TEMPERATURE]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the short forecast and the rain forecast of the next hour.
+
+        The same attributes as in FabianGabor/HA-Idokep.
+        """
+        hourly = self.coordinator.data[ATTR_API_HOURLY_FORECAST]
+        this_hour = hourly[0] if hourly else {}
+        return {
+            "precipitation": this_hour.get("precipitation"),
+            "precipitation_probability": this_hour.get("precipitation_probability"),
+            "short_forecast": self.coordinator.data[ATTR_API_CURRENT].get(
+                ATTR_API_SHORT_FORECAST
+            ),
+        }
 
     @callback
     def _async_forecast_daily(self) -> list[Forecast] | None:
