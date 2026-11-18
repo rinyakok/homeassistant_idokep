@@ -139,14 +139,27 @@ class MissingElementError(ValueError):
     """An expected element is not on the idokep.hu page."""
 
 
-def _find(parent: Tag, name: str, recursive: bool = True, **attrs) -> Tag:
-    """Find a child element, or raise MissingElementError if it is missing."""
+def _find_optional(
+    parent: Tag, name: str, recursive: bool = True, **attrs
+) -> Tag | None:
+    """Find a child element; None if it is not on the page."""
     if "class_" in attrs:
         attrs["class"] = attrs.pop("class_")
     found = parent.find(name, attrs=attrs, recursive=recursive)
-    if not isinstance(found, Tag):
+    return found if isinstance(found, Tag) else None
+
+
+def _find(parent: Tag, name: str, recursive: bool = True, **attrs) -> Tag:
+    """Find a child element, or raise MissingElementError if it is missing."""
+    found = _find_optional(parent, name, recursive, **attrs)
+    if found is None:
         raise MissingElementError(f"<{name} {attrs}> not found")
     return found
+
+
+def _text(element: Tag | None) -> str | None:
+    """Return the text of an optional element."""
+    return element.get_text() if element is not None else None
 
 
 def _first_int(text: str | None) -> int | None:
@@ -370,10 +383,12 @@ def _parse_hourly_card(
     wind_speed = None
     wind_bearing = None
     wind_link = _find(_find(card, "div", False, class_="ik hourly-wind"), "a", False)
-    wind_div = wind_link.find("div", recursive=False)
-    if isinstance(wind_div, Tag):
-        wind_speed = wind_mapping.get(wind_div["class"][-1])
-        rotate = re.search(r"--rotateAngle:\s*(\d+)deg", wind_div.get("style", ""))
+    wind_div = _find_optional(wind_link, "div", False)
+    if wind_div is not None:
+        wind_classes = wind_div.get_attribute_list("class")
+        wind_speed = wind_mapping.get(wind_classes[-1]) if wind_classes else None
+        style = str(wind_div.attrs.get("style", ""))
+        rotate = re.search(r"--rotateAngle:\s*(\d+)deg", style)
         wind_bearing = int(rotate.group(1)) if rotate else None
 
     # The precipitation amount is in an HTML comment ("<!--7 mm-->").
@@ -383,12 +398,8 @@ def _parse_hourly_card(
     if rain_level is not None:
         comment = rain_level.find(string=lambda text: isinstance(text, Comment))
         precipitation = _first_float(comment) or 0.0
-        chance = card.find(
-            "div", attrs={"class": "ik hourly-rain-chance"}, recursive=False
-        )
-        precipitation_probability = (
-            _first_int(chance.get_text()) if chance is not None else None
-        )
+        chance = _find_optional(card, "div", False, class_="ik hourly-rain-chance")
+        precipitation_probability = _first_int(_text(chance))
 
     return Forecast(
         datetime=forecast_datetime.astimezone(local_tz).isoformat(),
