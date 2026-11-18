@@ -1,4 +1,7 @@
 {
     "name": "Időkép Weather Component",
-    "country": ["HU"]
+    "country": [
+        "HU"
+    ],
+    "homeassistant": "2024.11.0"
 }

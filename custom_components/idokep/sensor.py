@@ -1,4 +1,4 @@
-"""Support for the Idokep Wetaher service."""
+"""Sensors for the Idokep Weather service."""
 
 from __future__ import annotations
 
@@ -31,10 +31,6 @@ from .const import (
 from .coordinator import WeatherUpdateCoordinator
 
 WEATHER_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
-    #  SensorEntityDescription(
-    #      key=ATTR_API_WEATHER,
-    #      name="Weather",
-    #  ),
     SensorEntityDescription(
         key=ATTR_API_NATIVE_TEMPERATURE,
         name="Temperature",
@@ -110,7 +106,7 @@ class AbstractIdokepSensor(SensorEntity):
         )
 
     async def async_update(self) -> None:
-        """Get the latest data from OWM and updates the states."""
+        """Request a refresh of the weather data."""
         await self._coordinator.async_request_refresh()
 
 
