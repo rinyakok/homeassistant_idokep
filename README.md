@@ -1,162 +1,216 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/rinyakok/homeassistant_idokep/main/custom_components/idokep/idokep.png" alt="Időkép" width="120">
+
 # Időkép Weather for Home Assistant
 
-Weather data, forecasts and weather alerts from [idokep.hu](https://www.idokep.hu) for places in Hungary.
+**Weather, forecasts and weather alerts from [idokep.hu](https://www.idokep.hu) for places in Hungary**
 
-> 🇬🇧 English summary below. **The full documentation is in Hungarian: [Magyar dokumentáció ↓](#magyar-dokumentáció)**
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5?logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz)
+[![Release](https://img.shields.io/github/v/release/rinyakok/homeassistant_idokep?logo=github)](https://github.com/rinyakok/homeassistant_idokep/releases)
+[![CI](https://github.com/rinyakok/homeassistant_idokep/actions/workflows/ci.yml/badge.svg)](https://github.com/rinyakok/homeassistant_idokep/actions/workflows/ci.yml)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.11%2B-18BCF2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io)
+[![License: MIT](https://img.shields.io/github/license/rinyakok/homeassistant_idokep)](LICENSE)
+
+🇬🇧 English summary below &nbsp;·&nbsp; 🇭🇺 **[Részletes magyar leírás lent ↓](#magyar)**
+
+</div>
+
+> [!NOTE]
+> 🇬🇧 This page starts with a short English summary. **The full documentation is in Hungarian: [Magyar dokumentáció ↓](#magyar)**
 >
-> 🇭🇺 Lent egy rövid angol összefoglaló található. **A részletes leírás magyarul: [Magyar dokumentáció ↓](#magyar-dokumentáció)**
+> 🇭🇺 Az oldal elején egy rövid angol összefoglaló áll. **A részletes leírás magyarul lent található: [Magyar dokumentáció ↓](#magyar)**
 
-## English summary
+---
 
-### Features
+## 🇬🇧 English summary
 
-- Weather entity: current weather, 15-day (optionally 30-day) daily forecast and 36-hour hourly forecast with temperature, wind, precipitation and precipitation chance
-- Sensors: temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast
-- Binary sensors: weather alerts (any, yellow, orange, red), thunderstorm in the next hour, connection to idokep.hu
-- Any number of places, one device per place
-- English and Hungarian user interface
+### ✨ Features
 
-### Installation (HACS)
+| | |
+|---|---|
+| 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
+| 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
+| ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
+| ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
+| 📍 **Many places** | Any number of places, one device per place |
+| 🗣️ **Two languages** | English and Hungarian user interface |
 
-This integration is in the HACS default list.
+### 📦 Installation (HACS)
+
+This integration is in the **HACS default list**, no custom repository needed.
 
 1. Open **HACS**, search for **Időkép** and open **Időkép Weather Component**.
 2. Select **Download**, then restart Home Assistant.
 
 ![HACS](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
 
-Requires Home Assistant 2024.11 or newer. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
+Requires Home Assistant **2024.11** or newer. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
 
-### Setup
+### ⚙️ Setup
 
 1. **Settings → Devices & services → Add integration → Időkép**.
-2. Type the place name as written on idokep.hu, e.g. **Pécs** (accents are optional: `erd` is saved as `Érd`).
+2. Type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
 3. Add more places the same way.
 
-- **Options** (gear icon): daily forecast of 15 days (default) or 30 days. 30 days needs one more download per update.
-- **Reconfigure** changes the place; entity IDs stay the same.
+- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days.
+- ✏️ **Reconfigure** changes the place; entity IDs stay the same.
 
-### Entities (for a place called Érd)
+### 🧩 Entities (for a place called Érd)
 
 | Entity | Description |
 |---|---|
-| `weather.idokep_erd` | Current weather; daily and hourly forecast via `weather.get_forecasts` |
-| `sensor.idokep_erd_temperature` | Temperature (°C) |
-| `sensor.idokep_erd_condition` | Condition, e.g. `rainy` |
-| `sensor.idokep_erd_condition_hungarian` | Condition as written on idokep.hu, e.g. "Erősen felhős" |
-| `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
-| `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Today's sunrise and sunset |
-| `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
-| `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
-| `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
-| `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm forecast for the current or next hour |
-| `binary_sensor.idokep_erd_connection` | Diagnostic: off when idokep.hu can't be reached |
+| 🌦️ `weather.idokep_erd` | Current weather; daily and hourly forecast via `weather.get_forecasts` |
+| 🌡️ `sensor.idokep_erd_temperature` | Temperature (°C) |
+| ☁️ `sensor.idokep_erd_condition` | Condition, e.g. `rainy` |
+| 🇭🇺 `sensor.idokep_erd_condition_hungarian` | Condition as written on idokep.hu, e.g. "Erősen felhős" |
+| 📝 `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
+| 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
+| 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
+| ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
+| 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
+| ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm in the current or next hour |
+| 🔌 `binary_sensor.idokep_erd_connection` | Diagnostic: off when idokep.hu can't be reached |
 
 Entity IDs follow the Home Assistant language at the time the entity is created. The examples are for English.
 
-### Switching from FabianGabor/HA-Idokep
+### 🔄 Switching from FabianGabor/HA-Idokep
 
-Both use the `idokep` domain, so only one can be installed. Remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same. [Step-by-step guide (Hungarian)](#átállás-a-ha-idokep-integrációról).
+Both use the `idokep` domain, so only one can be installed. Remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same. ➡️ [Step-by-step guide (Hungarian)](#atallas)
 
-### Limits
+### 🚧 Limits
 
-idokep.hu has no public API. The integration reads the web pages every 20 minutes, so a change on the website can break parts of it. The rest keeps working, and the problem is logged. Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
+idokep.hu has no public API. The integration reads the web pages every 20 minutes, so a change on the website can break parts of it. The rest keeps working, and the problem is logged. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
 
 ---
 
-## Magyar dokumentáció
+<a id="magyar"></a>
+
+## 🇭🇺 Magyar dokumentáció
 
 Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](https://www.idokep.hu)-ról, magyarországi településekre, Home Assistanthez.
 
-- [Mit tud?](#mit-tud)
-- [Telepítés](#telepítés)
-- [Beállítás](#beállítás)
-- [Entitások](#entitások)
-- [Riasztások](#riasztások)
-- [Előrejelzés lekérése](#előrejelzés-lekérése)
-- [Időjárási állapotok](#időjárási-állapotok)
-- [Vezérlőpult példák](#vezérlőpult-példák)
-- [Automatizálás példák](#automatizálás-példák)
-- [Átállás a HA-Idokep integrációról](#átállás-a-ha-idokep-integrációról)
-- [Korlátok](#korlátok)
-- [Gyakori kérdések](#gyakori-kérdések)
-- [Hibabejelentés](#hibabejelentés)
+<details open>
+<summary><b>📑 Tartalom</b></summary>
 
-### Mit tud?
+- ✨ [Mit tud?](#mit-tud)
+- 📦 [Telepítés](#telepites)
+- ⚙️ [Beállítás](#beallitas)
+- 🧩 [Entitások](#entitasok)
+- ⚠️ [Riasztások](#riasztasok)
+- 📈 [Előrejelzés lekérése](#elorejelzes)
+- ☁️ [Időjárási állapotok](#allapotok)
+- 🖼️ [Vezérlőpult példák](#vezerlopult)
+- 🤖 [Automatizálás példák](#automatizalas)
+- 🔄 [Átállás a HA-Idokep integrációról](#atallas)
+- 🚧 [Korlátok](#korlatok)
+- ❓ [Gyakori kérdések](#gyik)
+- 🐞 [Hibabejelentés](#hibabejelentes)
 
-- **Weather entitás:** aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély
-- **Szenzorok:** hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés
-- **Riasztások:** sárga, narancs és piros időjárási riasztás
-- **Zivatar a következő órában**, és egy kapcsolat szenzor, ami jelzi, ha az idokep.hu nem érhető el
-- **Több helyszín:** tetszőleges számú település, mindegyik külön eszközként („Időkép Érd”)
-- **Magyar és angol felület**
+</details>
 
-### Telepítés
+<a id="mit-tud"></a>
+
+### ✨ Mit tud?
+
+| | |
+|---|---|
+| 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
+| 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
+| ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
+| ⛈️ **Zivatar** | Zivatar az aktuális vagy a következő órában |
+| 🔌 **Kapcsolat** | Jelzi, ha az idokep.hu nem érhető el |
+| 📍 **Több helyszín** | Tetszőleges számú település, mindegyik külön eszközként („Időkép Érd”) |
+| 🗣️ **Két nyelv** | Magyar és angol felület |
+
+<a id="telepites"></a>
+
+### 📦 Telepítés
 
 #### HACS-szal (ajánlott)
 
-Az integráció benne van a HACS alapértelmezett listájában, egyéni tárolót (custom repository) nem kell felvenni.
+Az integráció benne van a **HACS alapértelmezett listájában**, egyéni tárolót (custom repository) nem kell felvenni.
 
 1. Nyisd meg a **HACS**-t, és keress rá: **Időkép**.
 2. Nyisd meg az **Időkép Weather Component**-et, és válaszd a **Letöltés** gombot.
 3. Indítsd újra a Home Assistantet.
 
-Legalább Home Assistant 2024.11 szükséges.
+> [!IMPORTANT]
+> Legalább **Home Assistant 2024.11** szükséges.
 
 #### Kézzel
 
 Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_components` mappájába, majd indítsd újra a Home Assistantet.
 
-### Beállítás
+<a id="beallitas"></a>
+
+### ⚙️ Beállítás
 
 1. **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása**, majd válaszd az **Időkép**-et.
 2. Add meg a település nevét úgy, ahogy az idokep.hu-n szerepel. Például **Pécs** (`https://www.idokep.hu/idojaras/Pécs`).
-   - Az ékezet elhagyható: az `erd` is Érdet jelenti. Az integráció az idokep.hu írásmódját menti el.
-   - Ha az idokep.hu nem ismeri a nevet, Budapestet mutatja helyette. Ilyenkor a beállítás hibát jelez („Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: Budapest”), így nem kapsz véletlenül budapesti adatokat.
 3. További településekhez ismételd meg.
 
-**Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. A 30 naposhoz frissítésenként eggyel több oldalt tölt le az integráció.
+> [!TIP]
+> Az ékezet elhagyható: az `erd` is Érdet jelenti. Az integráció az idokep.hu írásmódját menti el.
 
-**Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
+> [!WARNING]
+> Ha az idokep.hu nem ismeri a nevet, **Budapestet mutatja helyette**. Ilyenkor a beállítás hibát jelez („Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: Budapest”), így nem kapsz véletlenül budapesti adatokat.
 
-### Entitások
+- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. A 30 naposhoz frissítésenként eggyel több oldalt tölt le az integráció.
+- ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
+
+<a id="entitasok"></a>
+
+### 🧩 Entitások
 
 Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 
 | Entitás | Leírás |
 |---|---|
-| `weather.idokep_erd` | Aktuális időjárás, napi és óránkénti előrejelzés |
-| `sensor.idokep_erd_temperature` | Aktuális hőmérséklet (°C) |
-| `sensor.idokep_erd_condition` | Aktuális állapot Home Assistant formában (pl. `rainy`, `partlycloudy`) |
-| `sensor.idokep_erd_condition_hungarian` | Aktuális állapot úgy, ahogy az idokep.hu írja (pl. „Erősen felhős”) |
-| `sensor.idokep_erd_short_forecast` | Rövid szöveges előrejelzés (pl. „Kettősfronti hatás várható”) |
-| `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Mai napkelte és napnyugta |
-| `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
-| `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen színes riasztást mutat |
-| `binary_sensor.idokep_erd_yellow_alert`, `..._orange_alert`, `..._red_alert` | Bekapcsol, ha van ilyen szintű riasztás |
-| `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |
-| `binary_sensor.idokep_erd_connection` | Kikapcsol, ha az idokep.hu nem érhető el (diagnosztikai) |
+| 🌦️ `weather.idokep_erd` | Aktuális időjárás, napi és óránkénti előrejelzés |
+| 🌡️ `sensor.idokep_erd_temperature` | Aktuális hőmérséklet (°C) |
+| ☁️ `sensor.idokep_erd_condition` | Aktuális állapot Home Assistant formában (pl. `rainy`, `partlycloudy`) |
+| 🇭🇺 `sensor.idokep_erd_condition_hungarian` | Aktuális állapot úgy, ahogy az idokep.hu írja (pl. „Erősen felhős”) |
+| 📝 `sensor.idokep_erd_short_forecast` | Rövid szöveges előrejelzés (pl. „Kettősfronti hatás várható”) |
+| 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Mai napkelte és napnyugta |
+| 📅 `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
+| ⚠️ `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen színes riasztást mutat |
+| 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Bekapcsol, ha van ilyen szintű riasztás |
+| ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |
+| 🔌 `binary_sensor.idokep_erd_connection` | Kikapcsol, ha az idokep.hu nem érhető el (diagnosztikai) |
 
-Az entitásazonosítók a Home Assistant nyelvét követik az entitás létrehozásakor. Magyar nyelvnél például `sensor.idokep_erd_napkelte` lesz. A pontos azonosítót az entitás beállításainál látod.
+> [!NOTE]
+> Az entitásazonosítók a Home Assistant nyelvét követik az entitás létrehozásakor. Magyar nyelvnél például `sensor.idokep_erd_napkelte` lesz. A pontos azonosítót az entitás beállításainál látod.
 
 A **weather entitás** további attribútumai: `short_forecast` (rövid előrejelzés), `precipitation` és `precipitation_probability` (a következő óra csapadéka mm-ben és csapadékesélye %-ban).
 
-### Riasztások
+<a id="riasztasok"></a>
+
+### ⚠️ Riasztások
 
 Az idokep.hu kétféle figyelmeztetést mutat:
 
-- **Színes riasztások** (sárga, narancs, piros), például „Sárga riasztás szélre”. Ezeket a `weather_alert` és a szintenkénti szenzorok jelzik. A `weather_alert` attribútumai:
-  - `alert_count`: a riasztások száma
-  - `yellow_alerts`, `orange_alerts`, `red_alerts`: szintenkénti darabszám
-  - `alerts`: lista, elemenként `level` (szint), `type` (típus), `description` (az idokep.hu szövege) és `icon_url`
+#### 🟡 🟠 🔴 Színes riasztások
 
-  A szintenkénti szenzorok attribútumai: `alert_count` és `alerts`.
+Például „Sárga riasztás szélre”. Ezeket a `weather_alert` és a szintenkénti szenzorok jelzik.
 
-  A `type` értékei: `wind` (szél), `storm` (vihar), `thunderstorm` (zivatar), `rain` (eső), `snow` (hó), `freezing_rain` (ónos eső), `fog` (köd), `heat` (hőség), `cold` (hideg), `frost` (fagy), egyéb esetben `general`.
+| Attribútum (`weather_alert`) | Jelentés |
+|---|---|
+| `alert_count` | A riasztások száma |
+| `yellow_alerts`, `orange_alerts`, `red_alerts` | Szintenkénti darabszám |
+| `alerts` | Lista, elemenként `level` (szint), `type` (típus), `description` (az idokep.hu szövege) és `icon_url` |
 
-- **Figyelmeztető előrejelzés** a napi előrejelzésben, szín nélkül, például „Sok eső”, „Szeles nap” vagy „Hidegfront erős széllel”. Ezt a `warning_forecast` szenzor mutatja: az állapota a mai figyelmeztetés (ha nincs, ismeretlen), a `days` attribútumban pedig az összes nap szerepel (`date`, `description`, `icon_url`).
+A szintenkénti szenzorok attribútumai: `alert_count` és `alerts`.
 
-### Előrejelzés lekérése
+A `type` értékei: 💨 `wind` (szél), 🌪️ `storm` (vihar), ⛈️ `thunderstorm` (zivatar), 🌧️ `rain` (eső), ❄️ `snow` (hó), 🧊 `freezing_rain` (ónos eső), 🌫️ `fog` (köd), 🔥 `heat` (hőség), 🥶 `cold` (hideg), ❄️ `frost` (fagy), egyéb esetben `general`.
+
+#### 📅 Figyelmeztető előrejelzés
+
+A napi előrejelzésben, szín nélkül, például „Sok eső”, „Szeles nap” vagy „Hidegfront erős széllel”. Ezt a `warning_forecast` szenzor mutatja: az állapota a mai figyelmeztetés (ha nincs, ismeretlen), a `days` attribútumban pedig az összes nap szerepel (`date`, `description`, `icon_url`).
+
+<a id="elorejelzes"></a>
+
+### 📈 Előrejelzés lekérése
 
 A Home Assistant az előrejelzést nem attribútumként tárolja, hanem a `weather.get_forecasts` művelettel lehet lekérni:
 
@@ -169,33 +223,42 @@ data:
 response_variable: elorejelzes
 ```
 
-A napi előrejelzés elemei: `datetime`, `condition`, `temperature` (max), `templow` (min), `precipitation` (mm). Az óránkéntiéi: `datetime`, `condition`, `temperature`, `wind_speed` (km/h), `wind_bearing` (fok), `precipitation` (mm), `precipitation_probability` (%).
+| Előrejelzés | Mezők |
+|---|---|
+| 📅 Napi | `datetime`, `condition`, `temperature` (max), `templow` (min), `precipitation` (mm) |
+| 🕐 Óránkénti | `datetime`, `condition`, `temperature`, `wind_speed` (km/h), `wind_bearing` (fok), `precipitation` (mm), `precipitation_probability` (%) |
 
-### Időjárási állapotok
+<a id="allapotok"></a>
+
+### ☁️ Időjárási állapotok
 
 Az idokep.hu magyar leírásait az integráció Home Assistant állapotokra fordítja:
 
-| Home Assistant | idokep.hu |
-|---|---|
-| `sunny` (éjjel `clear-night`) | napos, derült |
-| `partlycloudy` | gyengén felhős, közepesen felhős |
-| `cloudy` | erősen felhős, borult |
-| `rainy` | gyenge eső, eső, zápor, szitálás, eső viharos széllel |
-| `pouring` | erős eső |
-| `lightning-rainy` | zivatar |
-| `lightning` | villámlás, száraz zivatar |
-| `hail` | jégeső |
-| `fog` | köd, ködös, ködszitálás, pára, párás |
-| `snowy` | havazás, intenzív havazás, hószállingózás, hózápor, hófúvás, hófúvás havazással |
-| `snowy-rainy` | havas eső, fagyott eső, ónos eső |
-| `windy` | szeles |
-| `exceptional` | porvihar |
+| | Home Assistant | idokep.hu |
+|:---:|---|---|
+| ☀️ | `sunny` (éjjel 🌙 `clear-night`) | napos, derült |
+| ⛅ | `partlycloudy` | gyengén felhős, közepesen felhős |
+| ☁️ | `cloudy` | erősen felhős, borult |
+| 🌧️ | `rainy` | gyenge eső, eső, zápor, szitálás, eső viharos széllel |
+| 🌊 | `pouring` | erős eső |
+| ⛈️ | `lightning-rainy` | zivatar |
+| 🌩️ | `lightning` | villámlás, száraz zivatar |
+| 🧊 | `hail` | jégeső |
+| 🌫️ | `fog` | köd, ködös, ködszitálás, pára, párás |
+| ❄️ | `snowy` | havazás, intenzív havazás, hószállingózás, hózápor, hófúvás, hófúvás havazással |
+| 🌨️ | `snowy-rainy` | havas eső, fagyott eső, ónos eső |
+| 💨 | `windy` | szeles |
+| ⚠️ | `exceptional` | porvihar |
 
-Ha egy leírás még nincs a listában, az állapot ismeretlen lesz, és a naplóban egyszer megjelenik egy figyelmeztetés („Unknown idokep.hu weather condition …”). Kérlek, jelezd [hibajegyben](https://github.com/rinyakok/homeassistant_idokep/issues), és felvesszük.
+> [!TIP]
+> Ha egy leírás még nincs a listában, az állapot ismeretlen lesz, és a naplóban egyszer megjelenik egy figyelmeztetés („Unknown idokep.hu weather condition …”). Kérlek, jelezd [hibajegyben](https://github.com/rinyakok/homeassistant_idokep/issues), és felvesszük.
 
-### Vezérlőpult példák
+<a id="vezerlopult"></a>
 
-**Időjárás kártya** napi és óránkénti előrejelzéssel:
+### 🖼️ Vezérlőpult példák
+
+<details>
+<summary><b>🌦️ Időjárás kártya</b> – napi előrejelzéssel</summary>
 
 ```yaml
 type: weather-forecast
@@ -204,7 +267,10 @@ forecast_type: daily
 show_forecast: true
 ```
 
-**Részletek** egy kártyán:
+</details>
+
+<details>
+<summary><b>📋 Részletek kártya</b> – előrejelzés, figyelmeztetés, napkelte</summary>
 
 ```yaml
 type: entities
@@ -222,7 +288,10 @@ entities:
     format: time
 ```
 
-**Riasztás kártya**, ami csak riasztáskor látszik:
+</details>
+
+<details>
+<summary><b>⚠️ Riasztás kártya</b> – csak riasztáskor látszik</summary>
 
 ```yaml
 type: conditional
@@ -238,9 +307,14 @@ card:
     {% endfor %}
 ```
 
-### Automatizálás példák
+</details>
 
-**Értesítés narancs vagy piros riasztásnál:**
+<a id="automatizalas"></a>
+
+### 🤖 Automatizálás példák
+
+<details>
+<summary><b>🟠 🔴 Értesítés narancs vagy piros riasztásnál</b></summary>
 
 ```yaml
 alias: Időjárási riasztás
@@ -258,7 +332,10 @@ actions:
            | map(attribute='description') | join(', ') }}
 ```
 
-**Zivatar érkezik:**
+</details>
+
+<details>
+<summary><b>⛈️ Zivatar érkezik</b></summary>
 
 ```yaml
 alias: Zivatar érkezik
@@ -272,7 +349,10 @@ actions:
       message: Zivatar várható a következő órában Érden.
 ```
 
-**Este 8-kor: lesz-e holnap eső?**
+</details>
+
+<details>
+<summary><b>🌧️ Este 8-kor: lesz-e holnap eső?</b></summary>
 
 ```yaml
 alias: Holnapi eső
@@ -295,48 +375,96 @@ actions:
       message: "Holnap {{ holnap.precipitation }} mm eső várható."
 ```
 
-### Átállás a HA-Idokep integrációról
+</details>
 
-A [FabianGabor/HA-Idokep](https://github.com/FabianGabor/HA-Idokep) és ez az integráció ugyanazt az `idokep` azonosítót használja, ezért egyszerre csak az egyik lehet telepítve. Ez az integráció a HA-Idokep bejegyzéseit közvetlenül át tudja venni:
+<a id="atallas"></a>
 
-1. A HACS-ban nyisd meg a **HA-Idokep**-et, és válaszd az **Eltávolítás** pontot. Az integráció bejegyzéseit (**Beállítások → Eszközök és szolgáltatások → Időkép**) **ne töröld**.
-2. Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS **Egyéni tárolók** listájából.
-3. Telepítsd ezt az integrációt a HACS-ból (**Időkép Weather Component**), majd indítsd újra a Home Assistantet.
+### 🔄 Átállás a HA-Idokep integrációról
 
-A bejegyzéseket az integráció automatikusan átveszi, az entitásazonosítók nem változnak. Megmarad a weather entitás, a hőmérséklet, az állapot (angolul és magyarul), a rövid előrejelzés, a napkelte és a napnyugta, a zivatar és a kapcsolat szenzor, valamint a riasztás szenzorok (`weather_alert`, `alert_yellow`, `alert_orange`, `alert_red`), ugyanazokkal az attribútumokkal. Új entitásként jelenik meg a figyelmeztető előrejelzés (`warning_forecast`).
+A [FabianGabor/HA-Idokep](https://github.com/FabianGabor/HA-Idokep) és ez az integráció ugyanazt az `idokep` azonosítót használja, ezért egyszerre csak az egyik lehet telepítve. Ez az integráció a HA-Idokep bejegyzéseit közvetlenül át tudja venni.
+
+1. 🗑️ A HACS-ban nyisd meg a **HA-Idokep**-et, és válaszd az **Eltávolítás** pontot.
+2. 🧹 Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS **Egyéni tárolók** listájából.
+3. 📦 Telepítsd ezt az integrációt a HACS-ból (**Időkép Weather Component**), majd indítsd újra a Home Assistantet.
+
+> [!CAUTION]
+> Az integráció bejegyzéseit (**Beállítások → Eszközök és szolgáltatások → Időkép**) **ne töröld**, különben az entitások újra létrejönnek, új azonosítóval.
+
+✅ A bejegyzéseket az integráció automatikusan átveszi, az entitásazonosítók nem változnak. Megmarad:
+
+- a weather entitás, a hőmérséklet és az állapot (angolul és magyarul),
+- a rövid előrejelzés, a napkelte és a napnyugta,
+- a zivatar és a kapcsolat szenzor,
+- a riasztás szenzorok (`weather_alert`, `alert_yellow`, `alert_orange`, `alert_red`), ugyanazokkal az attribútumokkal.
+
+🆕 Új entitásként jelenik meg a figyelmeztető előrejelzés (`warning_forecast`).
 
 Ha valami mégsem jelenik meg, nézd meg a **Beállítások → Rendszer → Naplók** oldalt, és [jelezd a hibát](https://github.com/rinyakok/homeassistant_idokep/issues).
 
-### Korlátok
+<a id="korlatok"></a>
 
-- **Nincs hivatalos API.** Az integráció az idokep.hu weboldalát olvassa. Ha az oldal szerkezete megváltozik, egyes adatok hiányozhatnak; a többi tovább frissül, és a naplóba kerül egy bejegyzés.
-- **Frissítés 20 percenként**, településenként két oldal (30 napos előrejelzésnél három). A zivatar szenzor is ilyenkor frissül.
-- **Csak magyarországi települések**, és csak azok, amelyeket az idokep.hu ismer.
-- **Páratartalom, légnyomás és aktuális szél** nincs: ezek az idokep.hu előrejelzés oldalain nem szerepelnek. Óránkénti szélsebesség és -irány az előrejelzésben van.
-- **A szélsebesség becslés:** az idokep.hu szélerősség-kategóriát mutat (pl. „mérsékelt”), ezt az integráció a kategória közepére (km/h) fordítja.
-- **Színes riasztások:** ezeket a riasztási sáv és az óránkénti előrejelzés ikonjai alapján olvassa az integráció. Ha egy riasztás csak a radar oldalon látszik, itt nem jelenik meg.
+### 🚧 Korlátok
 
-### Gyakori kérdések
+- 🌐 **Nincs hivatalos API.** Az integráció az idokep.hu weboldalát olvassa. Ha az oldal szerkezete megváltozik, egyes adatok hiányozhatnak; a többi tovább frissül, és a naplóba kerül egy bejegyzés.
+- ⏱️ **Frissítés 20 percenként**, településenként két oldal (30 napos előrejelzésnél három). A zivatar szenzor is ilyenkor frissül.
+- 🇭🇺 **Csak magyarországi települések**, és csak azok, amelyeket az idokep.hu ismer.
+- 💧 **Páratartalom, légnyomás és aktuális szél nincs:** ezek az idokep.hu előrejelzés oldalain nem szerepelnek. Óránkénti szélsebesség és -irány az előrejelzésben van.
+- 💨 **A szélsebesség becslés:** az idokep.hu szélerősség-kategóriát mutat (pl. „mérsékelt”), ezt az integráció a kategória közepére (km/h) fordítja.
+- ⚠️ **Színes riasztások:** ezeket a riasztási sáv és az óránkénti előrejelzés ikonjai alapján olvassa az integráció. Ha egy riasztás csak a radar oldalon látszik, itt nem jelenik meg.
 
-**Budapesti adatokat kapok, pedig más települést adtam meg.**
+<a id="gyik"></a>
+
+### ❓ Gyakori kérdések
+
+<details>
+<summary><b>Budapesti adatokat kapok, pedig más települést adtam meg.</b></summary>
+
 Az idokep.hu a számára ismeretlen nevekre Budapestet mutatja. Új beállításnál ezt az integráció kiszűri; régebbi bejegyzésnél a naplóban figyelmeztetés jelenik meg. Javítsd a nevet az **Újrakonfigurálás** ponttal.
 
-**Miért `unknown` az állapot?**
+</details>
+
+<details>
+<summary><b>Miért <code>unknown</code> az állapot?</b></summary>
+
 Az idokep.hu olyan leírást adott, ami még nincs a fordítási listában. A naplóban látod, melyik az; jelezd hibajegyben.
 
-**Használható egyszerre a HA-Idokep-pel?**
-Nem, mert mindkettő ugyanazt az `idokep` azonosítót használja. Lásd: [Átállás a HA-Idokep integrációról](#átállás-a-ha-idokep-integrációról).
+</details>
 
-**Hol van a napi előrejelzés a weather entitás attribútumai között?**
-A Home Assistant 2024 óta nem tárolja attribútumként. A `weather.get_forecasts` művelettel kérhető le, lásd: [Előrejelzés lekérése](#előrejelzés-lekérése).
+<details>
+<summary><b>Használható egyszerre a HA-Idokep-pel?</b></summary>
 
-**Miért nem frissül gyakrabban?**
+Nem, mert mindkettő ugyanazt az `idokep` azonosítót használja. Lásd: [Átállás a HA-Idokep integrációról](#atallas).
+
+</details>
+
+<details>
+<summary><b>Hol van a napi előrejelzés a weather entitás attribútumai között?</b></summary>
+
+A Home Assistant 2024 óta nem tárolja attribútumként. A `weather.get_forecasts` művelettel kérhető le, lásd: [Előrejelzés lekérése](#elorejelzes).
+
+</details>
+
+<details>
+<summary><b>Miért nem frissül gyakrabban?</b></summary>
+
 Az integráció kíméli az idokep.hu-t: 20 percenként, egyértelmű azonosítóval (User-Agent) kér adatot.
 
-### Hibabejelentés
+</details>
+
+<a id="hibabejelentes"></a>
+
+### 🐞 Hibabejelentés
 
 Hibát vagy hiányzó időjárási állapotot a [GitHub hibajegyek](https://github.com/rinyakok/homeassistant_idokep/issues) között jelezhetsz. Hasznos, ha megadod:
 
-- a település nevét,
-- a Home Assistant verzióját,
-- a napló idevágó sorait (**Beállítások → Rendszer → Naplók**, szűrés: `idokep`).
+- 📍 a település nevét,
+- 🏠 a Home Assistant verzióját,
+- 📜 a napló idevágó sorait (**Beállítások → Rendszer → Naplók**, szűrés: `idokep`).
+
+---
+
+<div align="center">
+
+Az adatok forrása: [idokep.hu](https://www.idokep.hu) &nbsp;·&nbsp; Data provided by idokep.hu
+
+</div>
