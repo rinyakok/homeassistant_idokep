@@ -27,7 +27,7 @@
 
 ### ✨ Features
 
-| | |
+| Feature | What you get |
 |---|---|
 | 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
 | 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
@@ -113,7 +113,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 
 ### ✨ Mit tud?
 
-| | |
+| Funkció | Mit kapsz |
 |---|---|
 | 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
 | 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
