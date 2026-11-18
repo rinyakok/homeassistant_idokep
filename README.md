@@ -8,6 +8,7 @@ Weather data and forecasts from [idokep.hu](https://www.idokep.hu) for places in
 
 - Weather entity with current conditions, a 15-day daily forecast and a 36-hour hourly forecast (temperature, wind, precipitation)
 - Sensors: temperature, condition (also in Hungarian), short text forecast, sunrise, sunset
+- Weather alerts (yellow, orange, red) and the daily warning forecast ("Sok eső", "Szeles nap")
 - Binary sensors: thunderstorm in the next hour, connection to idokep.hu
 - Any number of locations, one device per location
 - English and Hungarian user interface
@@ -40,6 +41,9 @@ To change a place later, use **Reconfigure** on the integration entry. Entity ID
 | `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Today's sunrise and sunset |
 | `binary_sensor.idokep_erd_storm_in_the_next_hour` | On if a thunderstorm is forecast for the current or next hour |
 | `binary_sensor.idokep_erd_connection` | Off when idokep.hu can't be reached (diagnostic) |
+| `binary_sensor.idokep_erd_weather_alert` | On if idokep.hu shows any weather alert; the alerts are in the attributes |
+| `binary_sensor.idokep_erd_yellow_alert`, `..._orange_alert`, `..._red_alert` | On if there is an alert of that level |
+| `sensor.idokep_erd_warning_forecast` | Today's warning note (e.g. "Szeles nap"); all days in the `days` attribute |
 
 The weather entity also has the attributes `short_forecast`, `precipitation` and `precipitation_probability` (forecast for the next hour).
 

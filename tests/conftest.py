@@ -18,6 +18,36 @@ def load_fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
+# No coloured alert was active when the pages were saved. These snippets
+# follow the alert markup that FabianGabor/HA-Idokep reads (from its tests).
+ALERT_BAR = (
+    '<div class="container ik alert-bar yellow p-0" id="topalertbar">'
+    '<a href="/radar#riasztas"><i class="fas fa-exclamation-triangle"></i>'
+    " Sárga riasztás szélre</a></div>"
+)
+HOURLY_ALERT = (
+    '<a class="ik hover-over" data-bs-content="{text}">'
+    '<img class="ik forecast-alert-icon" src="/images/alerts/{icon}.png"></a>'
+)
+
+
+def pages_with_alerts() -> dict[str, str]:
+    """Return the saved pages with one alert bar and three hourly alerts."""
+    current = load_fixture("idojaras.html").replace("<body>", f"<body>{ALERT_BAR}", 1)
+    hourly = load_fixture("elorejelzes.html")
+    empty_box = '<div class="ik genericHourlyAlert">\n</div>'
+    for text, icon in (
+        ("Narancs riasztás zivatar", "thunder"),
+        ("Narancs riasztás zivatar", "thunder"),  # the next hour: same alert
+        ("Piros riasztás viharos szélre", "storm"),
+    ):
+        box = HOURLY_ALERT.format(text=text, icon=icon)
+        hourly = hourly.replace(
+            empty_box, f'<div class="ik genericHourlyAlert">{box}</div>', 1
+        )
+    return {"/idojaras/": current, "/elorejelzes/": hourly}
+
+
 class FakeResponse:
     """Minimal stand-in for an aiohttp response."""
 

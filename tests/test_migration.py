@@ -94,7 +94,7 @@ async def test_migrate_single_location_entry(hass: HomeAssistant, fake_idokep) -
         "weather.idokepweather_erd_forecast": "legacy_weather_erd",
     }.items() <= entities.items()
     # No second copy of the old entities was created.
-    assert len(entities) == len(set(entities.values())) == 9
+    assert len(entities) == len(set(entities.values())) == 14
     assert hass.states.get("weather.idokepweather_erd_forecast").state == "cloudy"
     assert hass.states.get("sensor.idokepweather_erd_temperature").state == "14"
     # The device is kept (with its area), under the new identifier.
@@ -165,7 +165,7 @@ async def test_switch_from_ha_idokep(hass: HomeAssistant, fake_idokep) -> None:
             "fabian_storm_expected_1h"
         ),
     }.items() <= entities.items()
-    assert len(entities) == 9
+    assert len(entities) == 14
     assert hass.states.get("sensor.idokep_sunrise").state == (
         "2026-11-18T05:54:00+00:00"
     )

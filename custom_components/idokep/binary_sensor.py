@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -20,7 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import IdokepConfigEntry
-from .const import ATTR_API_HOURLY_FORECAST, ATTRIBUTION
+from .const import ATTR_API_ALERTS, ATTR_API_HOURLY_FORECAST, ATTRIBUTION
 from .coordinator import WeatherUpdateCoordinator
 from .entity import idokep_device_info
 
@@ -39,6 +40,22 @@ STORM_EXPECTED = BinarySensorEntityDescription(
     device_class=BinarySensorDeviceClass.SAFETY,
 )
 
+# Weather alerts: any level, and one sensor per level. Same keys and
+# attributes as FabianGabor/HA-Idokep.
+ALERT_ANY = BinarySensorEntityDescription(
+    key="weather_alert",
+    translation_key="weather_alert",
+    device_class=BinarySensorDeviceClass.SAFETY,
+)
+ALERT_LEVEL_SENSORS = {
+    level: BinarySensorEntityDescription(
+        key=f"alert_{level}",
+        translation_key=f"alert_{level}",
+        device_class=BinarySensorDeviceClass.SAFETY,
+    )
+    for level in ("yellow", "orange", "red")
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -51,6 +68,11 @@ async def async_setup_entry(
         [
             IdokepConnectivitySensor(coordinator, CONNECTIVITY),
             IdokepStormSensor(coordinator, STORM_EXPECTED),
+            IdokepAlertSensor(coordinator, ALERT_ANY, None),
+            *(
+                IdokepAlertSensor(coordinator, description, level)
+                for level, description in ALERT_LEVEL_SENSORS.items()
+            ),
         ]
     )
 
@@ -118,3 +140,48 @@ class IdokepStormSensor(IdokepBinarySensor):
             dt_util.now(),
             timedelta(hours=1),
         )
+
+
+class IdokepAlertSensor(IdokepBinarySensor):
+    """On while idokep.hu shows a weather alert (of one level, or any)."""
+
+    def __init__(
+        self,
+        coordinator: WeatherUpdateCoordinator,
+        description: BinarySensorEntityDescription,
+        level: str | None,
+    ) -> None:
+        """Initialize the alert sensor; level None means any level."""
+        super().__init__(coordinator, description)
+        self._level = level
+
+    def _alerts(self) -> list[dict[str, Any]]:
+        alerts = self.coordinator.data.get(ATTR_API_ALERTS, [])
+        if self._level is None:
+            return alerts
+        return [alert for alert in alerts if alert["level"] == self._level]
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if there is at least one alert."""
+        return bool(self._alerts())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the alerts, like HA-Idokep."""
+        alerts = self._alerts()
+        if self._level is not None:
+            return {
+                "alert_count": len(alerts),
+                "alerts": [
+                    {k: v for k, v in alert.items() if k != "level"} for alert in alerts
+                ],
+            }
+        return {
+            "alert_count": len(alerts),
+            **{
+                f"{level}_alerts": sum(a["level"] == level for a in alerts)
+                for level in ALERT_LEVEL_SENSORS
+            },
+            "alerts": alerts,
+        }

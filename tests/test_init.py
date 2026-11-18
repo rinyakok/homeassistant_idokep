@@ -14,7 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.idokep.const import DOMAIN
 
-from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture
+from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture, pages_with_alerts
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +87,11 @@ async def test_entities_of_a_new_location(hass: HomeAssistant, fake_idokep) -> N
         f"{entry.entry_id}_storm_expected_1h": (
             "binary_sensor.idokep_erd_storm_in_the_next_hour"
         ),
+        f"{entry.entry_id}_warning_forecast": "sensor.idokep_erd_warning_forecast",
+        f"{entry.entry_id}_weather_alert": "binary_sensor.idokep_erd_weather_alert",
+        f"{entry.entry_id}_alert_yellow": "binary_sensor.idokep_erd_yellow_alert",
+        f"{entry.entry_id}_alert_orange": "binary_sensor.idokep_erd_orange_alert",
+        f"{entry.entry_id}_alert_red": "binary_sensor.idokep_erd_red_alert",
         f"{entry.entry_id}_weather_erd": "weather.idokep_erd",
     }
 
@@ -259,7 +264,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
     registry = er.async_get(hass)
     weather = registry.async_get("weather.idokep_erd")
     assert weather.unique_id == f"{entry.entry_id}_weather_gyor"
-    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 9
+    assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 14
     assert hass.states.get("weather.idokep_erd") is not None
     assert fake_idokep.requested[-1].endswith("/elorejelzes/Győr")
 
@@ -349,3 +354,66 @@ async def test_connection_sensor_turns_off(hass: HomeAssistant, fake_idokep) -> 
 
     assert hass.states.get("binary_sensor.idokep_erd_connection").state == "off"
     assert hass.states.get("sensor.idokep_erd_temperature").state == "unavailable"
+
+
+# --- Weather alerts ----------------------------------------------------------
+
+
+async def test_warning_forecast_sensor(hass: HomeAssistant, fake_idokep) -> None:
+    """Today's hazard note is the state; all days are in the attributes."""
+    await _setup(hass)
+
+    state = hass.states.get("sensor.idokep_erd_warning_forecast")
+    assert state.state == "Hidegfront erős széllel"
+    assert [day["description"] for day in state.attributes["days"]][:3] == [
+        "Hidegfront erős széllel",
+        "Sok eső",
+        "Szeles nap",
+    ]
+
+
+async def test_alert_sensors_on_a_calm_day(hass: HomeAssistant, fake_idokep) -> None:
+    """Without alerts every alert sensor is off."""
+    await _setup(hass)
+
+    for level in ("weather", "yellow", "orange", "red"):
+        assert hass.states.get(f"binary_sensor.idokep_erd_{level}_alert").state == (
+            "off"
+        )
+    assert hass.states.get("binary_sensor.idokep_erd_weather_alert").attributes[
+        "alert_count"
+    ] == (0)
+
+
+async def test_alert_sensors(hass: HomeAssistant, fake_idokep) -> None:
+    """Alert sensors and their attributes (same as HA-Idokep)."""
+    fake_idokep.pages = pages_with_alerts()
+    fake_idokep.echo_location = False
+    await _setup(hass)
+
+    alert = hass.states.get("binary_sensor.idokep_erd_weather_alert")
+    assert alert.state == "on"
+    assert alert.attributes["alert_count"] == 3
+    assert alert.attributes["yellow_alerts"] == 1
+    assert alert.attributes["orange_alerts"] == 1
+    assert alert.attributes["red_alerts"] == 1
+    assert alert.attributes["alerts"][0] == {
+        "level": "yellow",
+        "type": "wind",
+        "description": "Sárga riasztás szélre",
+        "icon_url": None,
+    }
+
+    orange = hass.states.get("binary_sensor.idokep_erd_orange_alert")
+    assert orange.state == "on"
+    assert orange.attributes == orange.attributes | {
+        "alert_count": 1,
+        "alerts": [
+            {
+                "type": "thunderstorm",
+                "description": "Narancs riasztás zivatar",
+                "icon_url": "https://www.idokep.hu/images/alerts/thunder.png",
+            }
+        ],
+    }
+    assert hass.states.get("binary_sensor.idokep_erd_red_alert").state == "on"

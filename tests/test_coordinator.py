@@ -18,7 +18,7 @@ from custom_components.idokep.coordinator import (
     map_condition,
 )
 
-from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture
+from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture, pages_with_alerts
 
 BUDAPEST = ZoneInfo("Europe/Budapest")
 VALID_CONDITIONS = {
@@ -249,3 +249,65 @@ def test_storm_expected(forecast, expected) -> None:
     """Thunderstorm within the next hour (the HA conditions, not the text)."""
     now = datetime(2026, 11, 18, 13, 30, tzinfo=BUDAPEST)
     assert storm_expected(forecast, now, timedelta(hours=1)) is expected
+
+
+async def test_daily_hazard_notes(weather) -> None:
+    """The "veszély" notes of the daily forecast (real data, 2026-11-18)."""
+    hazards = weather["hazards"]
+    assert [(h["date"], h["description"]) for h in hazards] == [
+        ("2026-11-18", "Hidegfront erős széllel"),
+        ("2026-11-19", "Sok eső"),
+        ("2026-11-20", "Szeles nap"),
+        ("2026-11-21", "Hidegfront erős széllel"),
+        ("2026-11-23", "Hidegfront erős széllel"),
+    ]
+    assert hazards[1]["icon_url"] == (
+        "https://www.idokep.hu/assets/alertIcons/nagymennyisegu_eso.png"
+    )
+
+
+async def test_no_alerts_on_a_calm_day(weather) -> None:
+    """No coloured alert was active when the pages were saved."""
+    assert weather["alerts"] == []
+
+
+async def test_coloured_alerts(freezer) -> None:
+    """Alert bar and hourly alerts; repeated hourly alerts count once."""
+    freezer.move_to(FIXTURE_TIME)
+    data = await _fetch(FakeClientSession(pages_with_alerts()))
+
+    assert data["alerts"] == [
+        {
+            "level": "yellow",
+            "type": "wind",
+            "description": "Sárga riasztás szélre",
+            "icon_url": None,
+        },
+        {
+            "level": "orange",
+            "type": "thunderstorm",
+            "description": "Narancs riasztás zivatar",
+            "icon_url": "https://www.idokep.hu/images/alerts/thunder.png",
+        },
+        {
+            "level": "red",
+            "type": "storm",
+            "description": "Piros riasztás viharos szélre",
+            "icon_url": "https://www.idokep.hu/images/alerts/storm.png",
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_type"),
+    [
+        ("Sárga riasztás ónos esőre", "freezing_rain"),
+        ("Sárga riasztás hóra", "snow"),
+        ("Narancs riasztás hőségre", "heat"),
+        ("Sárga riasztás ködre", "fog"),
+        ("Valami új", "general"),
+    ],
+)
+def test_alert_types(text, expected_type) -> None:
+    """The alert type comes from the Hungarian text."""
+    assert coordinator._alert_type(text) == expected_type

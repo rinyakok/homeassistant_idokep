@@ -15,6 +15,9 @@
       },
       "sunset": {
         "default": "mdi:weather-sunset-down"
+      },
+      "warning_forecast": {
+        "default": "mdi:alert-outline"
       }
     },
     "binary_sensor": {
@@ -22,6 +25,30 @@
         "default": "mdi:weather-lightning",
         "state": {
           "off": "mdi:weather-partly-cloudy"
+        }
+      },
+      "weather_alert": {
+        "default": "mdi:shield-check-outline",
+        "state": {
+          "on": "mdi:alert"
+        }
+      },
+      "alert_yellow": {
+        "default": "mdi:shield-check-outline",
+        "state": {
+          "on": "mdi:alert"
+        }
+      },
+      "alert_orange": {
+        "default": "mdi:shield-check-outline",
+        "state": {
+          "on": "mdi:alert-octagon"
+        }
+      },
+      "alert_red": {
+        "default": "mdi:shield-check-outline",
+        "state": {
+          "on": "mdi:alert-octagon"
         }
       }
     }

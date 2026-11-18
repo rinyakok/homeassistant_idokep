@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date, datetime, time, timedelta, tzinfo
+from typing import Any
 
 import aiohttp
 from bs4 import BeautifulSoup, Comment, Tag
@@ -24,10 +25,12 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ATTR_API_ALERTS,
     ATTR_API_CONDITION,
     ATTR_API_CONDITION_HU,
     ATTR_API_CURRENT,
     ATTR_API_DAILY_FORECAST,
+    ATTR_API_HAZARDS,
     ATTR_API_HOURLY_FORECAST,
     ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
@@ -370,6 +373,125 @@ def _parse_daily_column(
     )
 
 
+# Alert types, from the text of the alert. The order matters: the first
+# match wins ("ónos eső" before "eső"). Same types as FabianGabor/HA-Idokep.
+ALERT_TYPES = {
+    "ónos eső": "freezing_rain",
+    "ónosesőre": "freezing_rain",
+    "vihar": "storm",
+    "zivatar": "thunderstorm",
+    "szél": "wind",
+    "hó": "snow",
+    "eső": "rain",
+    "köd": "fog",
+    "hőség": "heat",
+    "hideg": "cold",
+    "fagy": "frost",
+}
+ALERT_LEVELS = ("yellow", "orange", "red")
+ALERT_LEVEL_WORDS = {
+    "sárga": "yellow",
+    "narancs": "orange",
+    "piros": "red",
+    "vörös": "red",
+}
+
+
+def _alert_type(description: str) -> str:
+    """Return the alert type (e.g. "wind") from the Hungarian text."""
+    text = description.lower()
+    for hungarian, alert_type in ALERT_TYPES.items():
+        if hungarian in text:
+            return alert_type
+    return "general"
+
+
+def _alert_level(text: str, classes: list[str] | None = None) -> str | None:
+    """Return yellow / orange / red from CSS classes or from the text."""
+    for level in ALERT_LEVELS:
+        if classes and level in classes:
+            return level
+    lower = text.lower()
+    for word, level in ALERT_LEVEL_WORDS.items():
+        if word in lower:
+            return level
+    return None
+
+
+def _icon_url(img: Tag | None) -> str | None:
+    """Return the full URL of an image, if there is one."""
+    src = img.get("src") if img is not None else None
+    if not isinstance(src, str) or not src:
+        return None
+    return f"{BASE_IDOKEP_URL}{src}" if src.startswith("/") else src
+
+
+def _parse_alerts(*pages: BeautifulSoup) -> list[dict[str, Any]]:
+    """Return the coloured (yellow / orange / red) weather alerts.
+
+    Two places on the pages: the alert bar at the top ("Sárga riasztás
+    szélre") and the alert icons of the hourly forecast cards. The markup is
+    the one HA-Idokep reads; duplicates are reported once.
+    """
+    alerts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(level: str | None, description: str, icon: str | None) -> None:
+        description = " ".join(description.split())
+        if level is None or not description or (level, description) in seen:
+            return
+        seen.add((level, description))
+        alerts.append(
+            {
+                "level": level,
+                "type": _alert_type(description),
+                "description": description,
+                "icon_url": icon,
+            }
+        )
+
+    for page in pages:
+        bar = page.find("div", id="topalertbar")
+        if isinstance(bar, Tag):
+            text = (_find_optional(bar, "a") or bar).get_text(" ")
+            add(_alert_level(text, bar.get_attribute_list("class")), text, None)
+        for box in page.select(".genericHourlyAlert a[data-bs-content]"):
+            description = str(box.get("data-bs-content", ""))
+            add(
+                _alert_level(description),
+                description,
+                _icon_url(_find_optional(box, "img")),
+            )
+    return alerts
+
+
+def _parse_hazards(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Return the daily hazard notes ("Sok eső", "Szeles nap").
+
+    They are in the popover of the daily forecast columns, marked with a
+    "veszély" (danger) icon. They have no colour level.
+    """
+    hazards = []
+    for column in soup.select("#dailyForecastContainer .dailyForecastCol"):
+        link = column.select_one(".dfIconAlert a")
+        if link is None:
+            continue
+        day = _parse_title_date(str(link.get("title", "")))
+        popover = BeautifulSoup(str(link.get("data-bs-content", "")), "html.parser")
+        for line in popover.select(".fc-line"):
+            icon = line.find("img", alt="veszély")
+            text = " ".join(line.get_text().split())
+            if isinstance(icon, Tag) and text and day is not None:
+                hazards.append(
+                    {
+                        "date": day.isoformat(),
+                        "description": text,
+                        "icon_url": _icon_url(icon),
+                    }
+                )
+    return hazards
+
+
 def _parse_daily(
     soup: BeautifulSoup, today: date, budapest_tz: tzinfo, local_tz: tzinfo
 ) -> list[Forecast]:
@@ -527,6 +649,8 @@ async def FetchWeatherData(
         session, f"{BASE_IDOKEP_URL}/elorejelzes/{location}", request_headers
     )
     hourly = _parse_hourly(hourly_page, now, budapest_tz, local_tz, sunrise, sunset)
+    alerts = _parse_alerts(current_page, hourly_page)
+    hazards = _parse_hazards(current_page)
 
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
@@ -536,6 +660,8 @@ async def FetchWeatherData(
 
     return {
         ATTR_API_LOCATION: resolved_location,
+        ATTR_API_ALERTS: alerts,
+        ATTR_API_HAZARDS: hazards,
         ATTR_API_CURRENT: current,
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
