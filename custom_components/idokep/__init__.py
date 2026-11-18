@@ -3,25 +3,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    CONF_API_KEY,
     CONF_LANGUAGE,
-    CONF_LATITUDE,
-    CONF_LONGITUDE,
-    CONF_MODE,
     CONF_NAME,
-    ATTR_LOCATION,
 )
 from homeassistant.core import HomeAssistant
 
-from .const import CONFIG_FLOW_VERSION, PLATFORMS, DEFAULT_LANGUAGE, ATTR_API_LOCATION
+from .const import ATTR_API_LOCATION, CONFIG_FLOW_VERSION, DEFAULT_LANGUAGE, PLATFORMS
 from .coordinator import WeatherUpdateCoordinator
 
-from typing import Any
 OPTION_DEFAULTS = {CONF_LANGUAGE: DEFAULT_LANGUAGE}
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,9 +29,13 @@ class IdokepData:
     name: str
     coordinator: WeatherUpdateCoordinator
 
+
 type IdokepConfigEntry = ConfigEntry[IdokepData]
 
-def build_data_and_options(combined_data: dict[str, Any],) -> tuple[dict[str, Any], dict[str, Any]]:
+
+def build_data_and_options(
+    combined_data: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Split combined data and options."""
     data = {k: v for k, v in combined_data.items() if k not in OPTION_DEFAULTS}
     options = {
@@ -93,9 +92,11 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update options."""
     await hass.config_entries.async_reload(entry.entry_id)
 
+
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Update listener."""
     await hass.config_entries.async_reload(entry.entry_id)
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepData) -> bool:
     """Unload a config entry."""
