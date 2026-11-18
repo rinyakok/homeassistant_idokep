@@ -51,6 +51,9 @@
       },
       "sunset": {
         "name": "Napnyugta"
+      },
+      "warning_forecast": {
+        "name": "Figyelmeztető előrejelzés"
       }
     },
     "binary_sensor": {
@@ -59,6 +62,18 @@
       },
       "storm_expected_1h": {
         "name": "Zivatar a következő órában"
+      },
+      "weather_alert": {
+        "name": "Időjárási riasztás"
+      },
+      "alert_yellow": {
+        "name": "Sárga riasztás"
+      },
+      "alert_orange": {
+        "name": "Narancs riasztás"
+      },
+      "alert_red": {
+        "name": "Piros riasztás"
       }
     }
   }

@@ -8,6 +8,7 @@ Időjárási adatok és előrejelzés az [idokep.hu](https://www.idokep.hu)-ról
 
 - **Weather entitás:** aktuális időjárás, 15 napos napi és 36 órás óránkénti előrejelzés (hőmérséklet, szél, csapadék és csapadékesély)
 - **Szenzorok:** hőmérséklet, időjárási állapot (magyarul is), rövid szöveges előrejelzés, napkelte, napnyugta
+- **Riasztások:** sárga, narancs és piros időjárási riasztás, valamint figyelmeztető előrejelzés napokra („Sok eső”, „Szeles nap”)
 - **Bináris szenzorok:** zivatar a következő órában, kapcsolat az idokep.hu-val
 - **Több helyszín:** tetszőleges számú település, mindegyik külön eszközként
 - **Magyar és angol felület**
@@ -50,8 +51,40 @@ Egy „Érd” nevű helyszínnél:
 | `sensor.idokep_erd_sunrise`, `sensor.idokep_erd_sunset` | Mai napkelte és napnyugta |
 | `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |
 | `binary_sensor.idokep_erd_connection` | Kikapcsol, ha az idokep.hu nem érhető el (diagnosztikai) |
+| `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen riasztást mutat; a riasztások az attribútumokban |
+| `binary_sensor.idokep_erd_yellow_alert`, `..._orange_alert`, `..._red_alert` | Bekapcsol, ha van ilyen szintű riasztás |
+| `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
 
 A weather entitásnak további attribútumai is vannak: `short_forecast` (rövid előrejelzés), `precipitation` és `precipitation_probability` (a következő óra csapadéka és csapadékesélye).
+
+### Riasztások
+
+Az idokep.hu kétféle figyelmeztetést mutat:
+
+- **Színes riasztások** (sárga, narancs, piros), például „Sárga riasztás szélre”. Ezeket a `weather_alert` és a szintenkénti szenzorok jelzik. A `weather_alert` attribútumai:
+  - `alert_count`: a riasztások száma
+  - `yellow_alerts`, `orange_alerts`, `red_alerts`: szintenkénti darabszám
+  - `alerts`: lista, elemenként `level` (szint), `type` (típus, pl. `wind`, `thunderstorm`, `freezing_rain`), `description` (az idokep.hu szövege) és `icon_url`
+- **Figyelmeztető előrejelzés** a napi előrejelzésben, szín nélkül, például „Sok eső” vagy „Hidegfront erős széllel”. Ezt a `warning_forecast` szenzor mutatja: az állapota a mai figyelmeztetés, a `days` attribútumban pedig az összes nap szerepel (`date`, `description`, `icon_url`).
+
+**Példa** – értesítés narancs vagy piros riasztásnál:
+
+```yaml
+automation:
+  - alias: "Időjárási riasztás"
+    triggers:
+      - trigger: state
+        entity_id:
+          - binary_sensor.idokep_erd_orange_alert
+          - binary_sensor.idokep_erd_red_alert
+        to: "on"
+    actions:
+      - action: notify.notify
+        data:
+          message: >
+            {{ state_attr(trigger.entity_id, 'alerts')
+               | map(attribute='description') | join(', ') }}
+```
 
 Az entitásazonosítók a Home Assistant nyelvét követik az entitás létrehozásakor. A fenti példák angol nyelvű Home Assistantre vonatkoznak; magyar nyelvnél például `sensor.idokep_erd_napkelte` lesz.
 
@@ -99,7 +132,7 @@ A FabianGabor/HA-Idokep és ez az integráció ugyanazt az `idokep` azonosítót
 2. Ha a HA-Idokep egyéni tárolóként (custom repository) volt felvéve, azt is törölheted a HACS-ból.
 3. Telepítsd ezt az integrációt a HACS-ból, majd indítsd újra a Home Assistantet.
 
-A meglévő bejegyzéseket az integráció automatikusan átveszi. A közös entitások (weather, hőmérséklet, állapot) azonosítója nem változik. A HA-Idokep napkelte, napnyugta, rövid előrejelzés, magyar állapot, zivatar és kapcsolat entitásai is megmaradnak. A figyelmeztetés (alert) entitások egyelőre „nem elérhető” állapotúak lesznek, amíg a figyelmeztetések ide is bekerülnek.
+A meglévő bejegyzéseket az integráció automatikusan átveszi. A közös entitások (weather, hőmérséklet, állapot) azonosítója nem változik. A HA-Idokep napkelte, napnyugta, rövid előrejelzés, magyar állapot, zivatar és kapcsolat entitásai is megmaradnak. A riasztás entitások (`weather_alert`, `alert_yellow`, `alert_orange`, `alert_red`) is megmaradnak, ugyanazokkal az attribútumokkal.
 
 ## Hogyan működik?
 

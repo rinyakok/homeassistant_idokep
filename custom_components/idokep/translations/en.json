@@ -51,6 +51,9 @@
       },
       "sunset": {
         "name": "Sunset"
+      },
+      "warning_forecast": {
+        "name": "Warning forecast"
       }
     },
     "binary_sensor": {
@@ -59,6 +62,18 @@
       },
       "storm_expected_1h": {
         "name": "Storm in the next hour"
+      },
+      "weather_alert": {
+        "name": "Weather alert"
+      },
+      "alert_yellow": {
+        "name": "Yellow alert"
+      },
+      "alert_orange": {
+        "name": "Orange alert"
+      },
+      "alert_red": {
+        "name": "Red alert"
       }
     }
   }

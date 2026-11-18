@@ -111,6 +111,49 @@ def _schema(default: str | None = None) -> vol.Schema:
     )
 
 
+class LocationError(Exception):
+    """The location can't be used; `error` is the translation key."""
+
+    def __init__(self, error: str, shown: str | None = None) -> None:
+        super().__init__(error)
+        self.error = error
+        self.shown = shown
+
+
+async def async_validate_location(hass: HomeAssistant, location: str) -> str:
+    """Check the location on idokep.hu and return its name as idokep spells it.
+
+    idokep.hu shows Budapest for place names it doesn't know, without an
+    error, so the place on the page must match the one the user typed.
+    """
+    tz = await dt_util.async_get_time_zone(BUDAPEST_TZ_NAME)
+    try:
+        data = await FetchWeatherData(
+            async_get_clientsession(hass),
+            location,
+            tz,
+            tz,
+            await async_request_headers(hass),
+        )
+    except UpdateFailed as err:
+        raise LocationError("location_not_found") from err
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise LocationError("cannot_connect") from err
+
+    shown = data[ATTR_API_LOCATION]
+    if shown is None:
+        return location
+    if entry_unique_id(shown) != entry_unique_id(location):
+        raise LocationError("location_not_found", shown)
+    return shown
+
+
+def _schema(default: str | None = None) -> vol.Schema:
+    return vol.Schema(
+        {vol.Required(CONF_LOCATION, default=default or vol.UNDEFINED): TextSelector()}
+    )
+
+
 class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Idokep: one entry per location."""
 

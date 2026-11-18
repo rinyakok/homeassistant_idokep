@@ -18,12 +18,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from . import IdokepConfigEntry
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CONDITION_HU,
     ATTR_API_CURRENT,
+    ATTR_API_HAZARDS,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_SHORT_FORECAST,
     ATTR_API_SUNRISE,
@@ -39,6 +41,16 @@ class IdokepSensorEntityDescription(SensorEntityDescription):
     """Describes an Időkép sensor."""
 
     value_fn: Callable[[dict[str, Any]], StateType | datetime]
+    attributes_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+
+def _today_hazard(data: dict[str, Any]) -> str | None:
+    """Return today's hazard note ("Szeles nap"), or None."""
+    today = dt_util.now(dt_util.get_default_time_zone()).date().isoformat()
+    notes = [
+        h["description"] for h in data.get(ATTR_API_HAZARDS, []) if h["date"] == today
+    ]
+    return ", ".join(notes) or None
 
 
 def _current(key: str) -> Callable[[dict[str, Any]], Any]:
@@ -83,6 +95,12 @@ SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=_current(ATTR_API_SUNSET),
     ),
+    IdokepSensorEntityDescription(
+        key="warning_forecast",
+        translation_key="warning_forecast",
+        value_fn=_today_hazard,
+        attributes_fn=lambda data: {"days": data.get(ATTR_API_HAZARDS, [])},
+    ),
 )
 
 
@@ -121,3 +139,10 @@ class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
     def native_value(self) -> StateType | datetime:
         """Return the state of the sensor."""
         return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra attributes, if the sensor has any."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data)
