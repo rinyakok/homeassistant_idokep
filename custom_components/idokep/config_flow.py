@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import aiohttp
@@ -24,8 +23,6 @@ from .const import (
     weather_unique_id,
 )
 from .coordinator import BUDAPEST_TZ_NAME, FetchWeatherData, async_request_headers
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class LocationError(Exception):
