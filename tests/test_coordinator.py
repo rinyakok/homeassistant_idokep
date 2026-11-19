@@ -124,6 +124,33 @@ async def test_hourly_forecast(weather) -> None:
     assert any(hour["precipitation"] > 0 for hour in hourly)
 
 
+async def test_hourly_precipitation_in_tenths_of_mm(weather) -> None:
+    """The "<!--34 mm-->" comments are tenths of a millimetre (issue #33)."""
+    hourly = weather["hourly_forecast"]
+    # 14:00-22:00 on 19 November: the comments say 7 ... 3 "mm".
+    rainy = [hour["precipitation"] for hour in hourly[24:33]]
+    assert rainy == [0.7, 1.2, 2.3, 3.4, 3.9, 3.2, 2.0, 0.9, 0.3]
+    # The hours of that day add up to the 17 mm of the daily forecast.
+    day = [h for h in hourly if h["datetime"].startswith("2026-11-19")]
+    assert round(sum(h["precipitation"] for h in day), 1) == 17.9
+    assert weather["daily_forecast"][1]["precipitation"] == 17.0
+
+
+async def test_hourly_rain_chance_without_amount(weather) -> None:
+    """Hours without an amount keep their chance of rain (issue #33)."""
+    hourly = weather["hourly_forecast"]
+    chances = {
+        hour["datetime"]: hour["precipitation_probability"]
+        for hour in hourly
+        if hour["precipitation"] == 0
+    }
+    assert chances["2026-11-19T00:00:00+01:00"] == 30
+    assert chances["2026-11-19T13:00:00+01:00"] == 22
+    assert chances["2026-11-19T23:00:00+01:00"] == 50
+    # Hours with no chance on the page stay at 0.
+    assert chances["2026-11-18T14:00:00+01:00"] == 0
+
+
 async def test_hourly_times_follow_local_time_zone(freezer) -> None:
     """Forecast times are converted to the Home Assistant time zone."""
     freezer.move_to(FIXTURE_TIME)
