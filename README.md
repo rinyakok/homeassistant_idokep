@@ -45,7 +45,14 @@ This integration is in the **HACS default list**, no custom repository needed.
 
 ![HACS](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
 
-Requires Home Assistant **2024.11** or newer. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
+Requires Home Assistant **2024.1** or newer. HACS cannot select a release based on the HA version, so choose the matching release manually:
+
+| Home Assistant | HACS release tag | Source branch |
+| --- | --- | --- |
+| 2024 | `v2.0.0-ha2024` | `compat/ha-2024-support` |
+| 2026 | `v2.0.0` | `main` |
+
+For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followed by a number (e.g. `v2.0.0-ha2024-rc.1`), and mark the GitHub release as a pre-release. HACS beta versions must be enabled to install it. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
 
 ### ⚙️ Setup
 
@@ -141,7 +148,14 @@ Az integráció benne van a **HACS alapértelmezett listájában**, egyéni tár
 3. Indítsd újra a Home Assistantet.
 
 > [!IMPORTANT]
-> Legalább **Home Assistant 2024.11** szükséges.
+> Legalább **Home Assistant 2024.1** szükséges. A HACS nem választ automatikusan HA-verzió alapján, ezért kézzel válaszd ki a megfelelő kiadást:
+>
+> | Home Assistant | HACS release tag | Forráság |
+> | --- | --- | --- |
+> | 2024 | `v2.0.0-ha2024` | `compat/ha-2024-support` |
+> | 2026 | `v2.0.0` | `main` |
+>
+> Előzetes kiadáshoz a tag végére `-rc`, `-beta`, `-alpha` vagy `-dev` írható, opcionális sorszámmal (például `v2.0.0-ha2024-rc.1`); a GitHub Release-nél jelöld be a **Set as a pre-release** opciót, HACS-ban pedig engedélyezd a béta verziókat.
 
 #### Kézzel
 
