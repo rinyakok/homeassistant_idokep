@@ -20,7 +20,7 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import IdokepConfigEntry
+from . import IdokepConfigEntry, get_entry_data
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CONDITION_HU,
@@ -110,7 +110,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensors of one location."""
-    coordinator = entry.runtime_data.coordinator
+    coordinator = get_entry_data(hass, entry).coordinator
     async_add_entities(
         IdokepSensor(coordinator, description) for description in SENSOR_TYPES
     )

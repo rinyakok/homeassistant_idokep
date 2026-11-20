@@ -17,7 +17,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import IdokepConfigEntry
+from . import IdokepConfigEntry, get_entry_data
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CURRENT,
@@ -39,7 +39,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the weather entity of one location."""
-    async_add_entities([IdokepWeather(entry.runtime_data.coordinator)])
+    async_add_entities([IdokepWeather(get_entry_data(hass, entry).coordinator)])
 
 
 class IdokepWeather(SingleCoordinatorWeatherEntity[WeatherUpdateCoordinator]):

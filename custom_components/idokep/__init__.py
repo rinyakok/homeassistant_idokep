@@ -24,6 +24,7 @@ from .const import (
 from .coordinator import WeatherUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+DATA_RUNTIME = f"{DOMAIN}_runtime"
 
 
 @dataclass
@@ -33,7 +34,12 @@ class IdokepData:
     coordinator: WeatherUpdateCoordinator
 
 
-type IdokepConfigEntry = ConfigEntry[IdokepData]
+IdokepConfigEntry = ConfigEntry
+
+
+def get_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> IdokepData:
+    """Return the runtime data for a config entry."""
+    return hass.data[DATA_RUNTIME][entry.entry_id]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
@@ -41,7 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bo
     coordinator = WeatherUpdateCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
-    entry.runtime_data = IdokepData(coordinator)
+    hass.data.setdefault(DATA_RUNTIME, {})[entry.entry_id] = IdokepData(coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_change))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -55,7 +61,10 @@ async def _async_reload_on_change(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        hass.data[DATA_RUNTIME].pop(entry.entry_id, None)
+    return unloaded
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

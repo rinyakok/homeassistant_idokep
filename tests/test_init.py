@@ -12,6 +12,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.idokep import DATA_RUNTIME, get_entry_data
 from custom_components.idokep.const import DOMAIN
 
 from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture, pages_with_alerts
@@ -102,6 +103,7 @@ async def test_entities_of_a_new_location(hass: HomeAssistant, fake_idokep) -> N
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
+    assert entry.entry_id not in hass.data[DATA_RUNTIME]
 
 
 async def test_two_locations(hass: HomeAssistant, fake_idokep) -> None:
@@ -164,7 +166,7 @@ async def test_unknown_location_is_logged(
         lambda hass: session,
     )
     entry = await _setup(hass)
-    await entry.runtime_data.coordinator.async_refresh()
+    await get_entry_data(hass, entry).coordinator.async_refresh()
 
     assert caplog.text.count("does not know the location 'Érd'") == 1
 
@@ -349,7 +351,7 @@ async def test_connection_sensor_turns_off(hass: HomeAssistant, fake_idokep) -> 
     entry = await _setup(hass)
     fake_idokep.error = aiohttp.ClientConnectionError("no network")
 
-    await entry.runtime_data.coordinator.async_refresh()
+    await get_entry_data(hass, entry).coordinator.async_refresh()
     await hass.async_block_till_done()
 
     assert hass.states.get("binary_sensor.idokep_erd_connection").state == "off"

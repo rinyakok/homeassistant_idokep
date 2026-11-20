@@ -10,10 +10,10 @@ import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
-    ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
@@ -93,7 +93,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> IdokepOptionsFlow:
         """Return the options flow."""
-        return IdokepOptionsFlow()
+        return IdokepOptionsFlow(config_entry)
 
     async def _async_check(
         self, user_input: dict[str, Any]
@@ -111,7 +111,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Add a location."""
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
@@ -131,7 +131,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Change the location of an existing entry."""
         entry = self._get_reconfigure_entry()
         old_location: str = entry.data[CONF_LOCATION]
@@ -179,16 +179,20 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 class IdokepOptionsFlow(OptionsFlow):
     """Options of one location: the length of the daily forecast."""
 
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Store the entry explicitly for Home Assistant versions before 2024.11."""
+        self._config_entry = config_entry
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Choose 15 or 30 days."""
         if user_input is not None:
             return self.async_create_entry(
                 data={CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
             )
 
-        current = self.config_entry.options.get(
+        current = self._config_entry.options.get(
             CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
         )
         return self.async_show_form(

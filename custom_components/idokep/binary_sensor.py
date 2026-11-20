@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import IdokepConfigEntry
+from . import IdokepConfigEntry, get_entry_data
 from .const import ATTR_API_ALERTS, ATTR_API_HOURLY_FORECAST, ATTRIBUTION
 from .coordinator import WeatherUpdateCoordinator
 from .entity import idokep_device_info
@@ -63,7 +63,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the binary sensors of one location."""
-    coordinator = entry.runtime_data.coordinator
+    coordinator = get_entry_data(hass, entry).coordinator
     async_add_entities(
         [
             IdokepConnectivitySensor(coordinator, CONNECTIVITY),
