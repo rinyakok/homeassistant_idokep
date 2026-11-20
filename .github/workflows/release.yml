@@ -6,6 +6,9 @@ name: Release
 # 2. The integration is packed into idokep.zip and attached to the release.
 #    hacs.json sets zip_release, so HACS (the Marketplace) installs from this
 #    file, and its download count is the counter HACS shows.
+# Stable tags are vX.Y.Z (main) and vX.Y.Z-ha2024 (2024 compatibility).
+# Optional pre-release tags use -alpha, -beta, -rc, or -dev, with an optional
+# numeric suffix, after the target, e.g. vX.Y.Z-ha2024-rc.1.
 on:
   release:
     types: [published]
@@ -24,6 +27,8 @@ jobs:
       contents: write
     env:
       TAG: ${{ github.event.release.tag_name || github.ref_name }}
+      RELEASE_EVENT: ${{ github.event_name == 'release' }}
+      IS_PRERELEASE: ${{ github.event.release.prerelease || false }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,10 +37,30 @@ jobs:
         run: |
           manifest=$(jq -r .version custom_components/idokep/manifest.json)
           tag="${TAG#v}"
-          echo "Release tag: ${tag}, manifest.json version: ${manifest}"
-          if [ "${tag}" != "${manifest}" ]; then
-            echo "::error file=custom_components/idokep/manifest.json::manifest.json version (${manifest}) does not match the release tag (${tag}). Update the version and publish the release again."
+          if [[ "${tag}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-ha2024)?(-(alpha|beta|rc|dev)(\.[0-9]+)?)?$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            prerelease="${BASH_REMATCH[3]}"
+          else
+            echo "::error::Release tag must be vX.Y.Z[-ha2024][-alpha|-beta|-rc|-dev[.N]]."
             exit 1
+          fi
+          echo "Release tag: ${tag}, manifest.json version: ${manifest}"
+          if [ "${version}" != "${manifest}" ]; then
+            echo "::error file=custom_components/idokep/manifest.json::Release tag base (${version}) does not match manifest.json version (${manifest}). Update the version and publish the release again."
+            exit 1
+          fi
+          if [ "${RELEASE_EVENT}" = "true" ]; then
+            if [ -n "${prerelease}" ] && [ "${IS_PRERELEASE}" != "true" ]; then
+              echo "::error::Pre-release tags must be published with GitHub's pre-release option enabled."
+              exit 1
+            fi
+            if [ -z "${prerelease}" ] && [ "${IS_PRERELEASE}" = "true" ]; then
+              echo "::error::Stable tags must not be marked as pre-releases."
+              exit 1
+            fi
+          fi
+          if [ -n "${prerelease}" ]; then
+            echo "Pre-release identifier: ${prerelease}"
           fi
       - name: Build idokep.zip
         # HACS unpacks the file into custom_components/idokep/, so the files
