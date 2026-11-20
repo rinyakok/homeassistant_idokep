@@ -17,6 +17,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.idokep import DATA_RUNTIME, get_entry_data
 from custom_components.idokep.const import (
     CONF_MEASUREMENT_POINT,
+    CONF_SMOG_SENSORS_ENABLED,
+    CONF_SMOG_STATIONS,
     CONF_STATION_SENSORS_ENABLED,
     DOMAIN,
 )
@@ -86,6 +88,16 @@ def _station_map_pages() -> dict[str, str]:
             '"Érd","station-7",3.1]]});</script>'
         ),
     }
+
+
+def _smog_map_page() -> str:
+    """Return a live-format smog map with two pollutants for Érd."""
+    return (
+        "<script>window.szmogTerkepek = [];"
+        'window.szmogTerkepek.push({"allomasok":['
+        '["erd-1",47.5,19.1,"Érd","Érd",1795198921,52,18,"OLM"]'
+        "]});</script>"
+    )
 
 
 async def _setup(hass: HomeAssistant, entry: MockConfigEntry | None = None):
@@ -229,10 +241,74 @@ async def test_user_flow_uses_idokep_spelling(hass: HomeAssistant, fake_idokep) 
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Érd"
-    assert result["data"] == {"location": "Érd"}
+    assert result["data"] == {"location": "Érd", CONF_SMOG_STATIONS: []}
     assert result["result"].unique_id == "erd"
     await hass.async_block_till_done()
     assert hass.states.get("weather.idokep_erd") is not None
+
+
+async def test_user_flow_offers_smog_only_for_accented_location(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Matching ignores case but keeps accents significant."""
+    fake_idokep.pages["/szmog"] = _smog_map_page()
+    result = await _start_user_flow(hass, "ÉRD")
+    entry = result["result"]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_SMOG_STATIONS] == [
+        {
+            "id": "erd-1",
+            "city": "Érd",
+            "name": "Érd",
+            "source": "OLM",
+            "has_pm25": True,
+        }
+    ]
+
+    options = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        options["flow_id"],
+        {
+            "forecast_days": "15",
+            CONF_STATION_SENSORS_ENABLED: False,
+            CONF_SMOG_SENSORS_ENABLED: True,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_SMOG_SENSORS_ENABLED] is True
+    registry = er.async_get(hass)
+    pm10_entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm10"
+    )
+    pm25_entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm25"
+    )
+    assert hass.states.get(pm10_entity_id).state == "52.0"
+    assert hass.states.get(pm25_entity_id).state == "18.0"
+    pm10 = hass.states.get(pm10_entity_id)
+    assert pm10.attributes["station_id"] == "erd-1"
+    assert pm10.attributes["source"] == "OLM"
+
+
+async def test_user_flow_does_not_match_accentless_smog_location(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """A same-spelling location without the required accent is not offered."""
+    fake_idokep.pages["/szmog"] = _smog_map_page()
+    fake_idokep.echo_location = False
+
+    result = await _start_user_flow(hass, "erd")
+    options = await hass.config_entries.options.async_init(result["result"].entry_id)
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SMOG_STATIONS] == []
+    assert all(
+        getattr(key, "schema", key) != CONF_SMOG_SENSORS_ENABLED
+        for key in options["data_schema"].schema
+    )
 
 
 async def test_user_flow_place_unknown_to_idokep(hass: HomeAssistant) -> None:
@@ -306,7 +382,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {"location": "Győr"}
+    assert entry.data == {"location": "Győr", CONF_SMOG_STATIONS: []}
     assert entry.title == "Győr"
     assert entry.unique_id == "gyor"
     registry = er.async_get(hass)
@@ -314,7 +390,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
     assert weather.unique_id == f"{entry.entry_id}_weather_gyor"
     assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 14
     assert hass.states.get("weather.idokep_erd") is not None
-    assert fake_idokep.requested[-1].endswith("/elorejelzes/Győr")
+    assert any(url.endswith("/elorejelzes/Győr") for url in fake_idokep.requested)
 
 
 async def test_reconfigure_to_existing_location(

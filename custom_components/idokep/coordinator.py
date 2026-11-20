@@ -40,6 +40,7 @@ from .const import (
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
     ATTR_API_SHORT_FORECAST,
+    ATTR_API_SMOG_SENSORS,
     ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
@@ -47,6 +48,8 @@ from .const import (
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
     CONF_MEASUREMENT_POINT,
+    CONF_SMOG_SENSORS_ENABLED,
+    CONF_SMOG_STATIONS,
     CONF_STATION_SENSORS_ENABLED,
     DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
@@ -824,6 +827,102 @@ async def _fetch_station_precipitation(
     return rows
 
 
+def _smog_location_key(value: str) -> str:
+    """Normalize capitalization while keeping accents significant."""
+    return unicodedata.normalize("NFC", value.strip()).casefold()
+
+
+def parse_smog_stations(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Parse current station measurements embedded in the smog-map page."""
+    maps = _pushed_json_objects(soup, "window.szmogTerkepek")
+    stations: dict[str, dict[str, Any]] = {}
+    timestamps: dict[str, float] = {}
+    for map_data in maps:
+        for row in _station_rows(map_data, "allomasok"):
+            if not isinstance(row, list) or len(row) < 9:
+                continue
+            station_id = row[0]
+            city, name = row[3], row[4]
+            timestamp = _json_number(row[5])
+            pm10 = _json_number(row[6])
+            latitude = _json_number(row[1])
+            longitude = _json_number(row[2])
+            if (
+                isinstance(station_id, bool)
+                or not isinstance(station_id, (str, int))
+                or not isinstance(city, str)
+                or not isinstance(name, str)
+                or timestamp is None
+                or pm10 is None
+                or latitude is None
+                or longitude is None
+            ):
+                continue
+            station_id = str(station_id).strip()
+            city = city.strip().rstrip(" ,")
+            name = name.strip() or city
+            if not station_id or not city:
+                continue
+            try:
+                measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
+            except OverflowError, OSError, ValueError:
+                continue
+            if timestamp <= timestamps.get(station_id, -1):
+                continue
+            stations[station_id] = {
+                "id": station_id,
+                "city": city,
+                "name": name,
+                "source": row[8] if isinstance(row[8], str) else None,
+                "latitude": latitude,
+                "longitude": longitude,
+                "measured_at": measured_at,
+                "timestamp": timestamp,
+                "pm10": pm10,
+                "pm25": _json_number(row[7]),
+            }
+            timestamps[station_id] = timestamp
+    return list(stations.values())
+
+
+async def FetchSmogStations(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+) -> list[dict[str, Any]]:
+    """Find smog stations whose settlement matches the weather location."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+    key = _smog_location_key(location)
+    return [
+        {
+            "id": station["id"],
+            "city": station["city"],
+            "name": station["name"],
+            "source": station["source"],
+            "has_pm25": station["pm25"] is not None,
+        }
+        for station in parse_smog_stations(soup)
+        if _smog_location_key(station["city"]) == key
+    ]
+
+
+async def FetchSmogData(
+    session: aiohttp.ClientSession,
+    station_ids: list[str],
+    request_headers: dict | None = None,
+) -> dict[str, dict[str, Any] | None]:
+    """Fetch selected smog station observations without failing weather updates."""
+    if not station_ids:
+        return {}
+    try:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+        observations = {station["id"]: station for station in parse_smog_stations(soup)}
+    except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+        _LOGGER.warning("Unable to fetch Időkép smog station data: %s", err)
+        return dict.fromkeys(station_ids)
+    return {station_id: observations.get(station_id) for station_id in station_ids}
+
+
 async def FetchStationWeatherData(
     session: aiohttp.ClientSession,
     measurement_point: str,
@@ -953,6 +1052,7 @@ async def FetchWeatherData(
     forecast_days: int = DEFAULT_FORECAST_DAYS,
     station_sensors_enabled: bool = False,
     measurement_point: str | None = None,
+    smog_station_ids: list[str] | None = None,
 ) -> dict:
     """Download and parse the current weather and the forecasts.
 
@@ -993,6 +1093,10 @@ async def FetchWeatherData(
             session, measurement_point or "", request_headers
         )
 
+    smog_sensors: dict[str, dict[str, Any] | None] = {}
+    if smog_station_ids:
+        smog_sensors = await FetchSmogData(session, smog_station_ids, request_headers)
+
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
             f"No weather data found on idokep.hu for {location!r}; "
@@ -1007,6 +1111,7 @@ async def FetchWeatherData(
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
         ATTR_API_STATION_SENSORS: station_sensors,
+        ATTR_API_SMOG_SENSORS: smog_sensors,
     }
 
 
@@ -1074,6 +1179,16 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 ),
                 self.config_entry.options.get(CONF_STATION_SENSORS_ENABLED, False),
                 self.config_entry.options.get(CONF_MEASUREMENT_POINT),
+                (
+                    [
+                        station["id"]
+                        for station in self.config_entry.data.get(
+                            CONF_SMOG_STATIONS, []
+                        )
+                    ]
+                    if self.config_entry.options.get(CONF_SMOG_SENSORS_ENABLED, False)
+                    else None
+                ),
             )
         except (aiohttp.ClientError, TimeoutError) as err:
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err

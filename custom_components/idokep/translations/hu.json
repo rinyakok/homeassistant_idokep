@@ -93,10 +93,11 @@
     "step": {
       "init": {
         "title": "Időkép beállítások",
-        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. Az állomásszenzorok a kiválasztott pont adatait olvassák le az Időkép térképeiről.",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. Az állomásszenzorok a kiválasztott pont adatait olvassák le az Időkép térképeiről. A szmogadatok kapcsolója csak akkor jelenik meg, ha a településhez található mérőállomás a Szmogtérképen.",
         "data": {
           "forecast_days": "Napi előrejelzés",
           "station_sensors_enabled": "Térképes állomásszenzorok bekapcsolása",
+          "smog_sensors_enabled": "Szmogszenzorok bekapcsolása",
           "measurement_point": "Mérési pont neve vagy azonosítója"
         },
         "data_description": {
@@ -116,6 +117,12 @@
       }
     },
     "station_sensors_enabled": {
+      "options": {
+        "true": "Bekapcsolva",
+        "false": "Kikapcsolva"
+      }
+    },
+    "smog_sensors_enabled": {
       "options": {
         "true": "Bekapcsolva",
         "false": "Kikapcsolva"

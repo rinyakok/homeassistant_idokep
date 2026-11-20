@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 
-from custom_components.idokep.coordinator import FetchStationWeatherData
+from custom_components.idokep.coordinator import (
+    FetchSmogData,
+    FetchSmogStations,
+    FetchStationWeatherData,
+)
 
 from .conftest import FakeClientSession
 
@@ -84,3 +88,42 @@ async def test_station_data_missing_measurement_is_none() -> None:
 
     assert data["temperature"]["value"] == 12.5
     assert data["precipitation"] is None
+
+
+def _smog_page() -> str:
+    """Return two map views with duplicate and distinct station rows."""
+    stations = (
+        '["erd-1",47.5,19.1,"Érd","Érd",1795198921,52,18,"OLM"],'
+        '["bud-1",47.5,19.1,"Budapest","Budapest XI.",1795198921,21,null,"OLM"]'
+    )
+    return (
+        "<script>window.szmogTerkepek = [];"
+        f'window.szmogTerkepek.push({{"allomasok":[{stations}]}});'
+        f'window.szmogTerkepek.push({{"allomasok":[{stations}]}});'
+        "</script>"
+    )
+
+
+async def test_smog_lookup_ignores_case_but_preserves_accents() -> None:
+    """The location match is case-insensitive, not accent-insensitive."""
+    session = FakeClientSession({"/szmog": _smog_page()})
+
+    stations = await FetchSmogStations(session, "ÉRD")
+    accentless = await FetchSmogStations(session, "erd")
+
+    assert [station["id"] for station in stations] == ["erd-1"]
+    assert stations[0]["has_pm25"] is True
+    assert accentless == []
+
+
+async def test_smog_data_is_deduplicated_and_contains_measurements() -> None:
+    """Both map views collapse to one current observation per station ID."""
+    session = FakeClientSession({"/szmog": _smog_page()})
+
+    data = await FetchSmogData(session, ["erd-1", "bud-1"])
+
+    assert data["erd-1"]["pm10"] == 52
+    assert data["erd-1"]["pm25"] == 18
+    assert data["erd-1"]["source"] == "OLM"
+    assert data["bud-1"]["pm10"] == 21
+    assert data["bud-1"]["pm25"] is None

@@ -28,10 +28,13 @@ from .const import (
     ATTR_API_HAZARDS,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_SHORT_FORECAST,
+    ATTR_API_SMOG_SENSORS,
     ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     ATTRIBUTION,
+    CONF_SMOG_SENSORS_ENABLED,
+    CONF_SMOG_STATIONS,
     CONF_STATION_SENSORS_ENABLED,
 )
 from .coordinator import WeatherUpdateCoordinator
@@ -177,9 +180,15 @@ async def async_setup_entry(
     descriptions = SENSOR_TYPES
     if entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
         descriptions += STATION_SENSOR_TYPES
-    async_add_entities(
+    entities: list[SensorEntity] = [
         IdokepSensor(coordinator, description) for description in descriptions
-    )
+    ]
+    if entry.options.get(CONF_SMOG_SENSORS_ENABLED, False):
+        for station in entry.data.get(CONF_SMOG_STATIONS, []):
+            entities.append(IdokepSmogSensor(coordinator, station, "pm10"))
+            if station.get("has_pm25"):
+                entities.append(IdokepSmogSensor(coordinator, station, "pm25"))
+    async_add_entities(entities)
 
 
 class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
@@ -212,3 +221,60 @@ class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
         if self.entity_description.attributes_fn is None:
             return None
         return self.entity_description.attributes_fn(self.coordinator.data)
+
+
+class IdokepSmogSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
+    """A PM10 or PM2.5 measurement from one smog-map station."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    _attr_native_unit_of_measurement = "µg/m³"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: WeatherUpdateCoordinator,
+        station: dict[str, Any],
+        pollutant: str,
+    ) -> None:
+        """Initialize a station-specific smog sensor."""
+        super().__init__(coordinator)
+        self._station_id = station["id"]
+        self._pollutant = pollutant
+        self._station = station
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_smog_{self._station_id}_{pollutant}"
+        )
+        pollutant_name = "PM10" if pollutant == "pm10" else "PM2.5"
+        self._attr_name = f"{station['name']} {pollutant_name}"
+        self._attr_device_info = idokep_device_info(coordinator.config_entry)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the latest pollutant measurement."""
+        observation = self.coordinator.data.get(ATTR_API_SMOG_SENSORS, {}).get(
+            self._station_id
+        )
+        return observation.get(self._pollutant) if observation else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return station and measurement metadata."""
+        observation = self.coordinator.data.get(ATTR_API_SMOG_SENSORS, {}).get(
+            self._station_id
+        )
+        if observation is None:
+            return {
+                "station_id": self._station_id,
+                "station_name": self._station["name"],
+                "city": self._station["city"],
+            }
+        return {
+            "station_id": observation["id"],
+            "station_name": observation["name"],
+            "city": observation["city"],
+            "source": observation["source"],
+            "latitude": observation["latitude"],
+            "longitude": observation["longitude"],
+            "measured_at": observation["measured_at"],
+        }
