@@ -93,10 +93,11 @@
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps. Smog sensors are offered only when the location has a matching station on the smog map.",
         "data": {
           "forecast_days": "Daily forecast",
           "station_sensors_enabled": "Enable map station sensors",
+          "smog_sensors_enabled": "Enable smog sensors",
           "measurement_point": "Measurement point name or ID"
         },
         "data_description": {
@@ -116,6 +117,12 @@
       }
     },
     "station_sensors_enabled": {
+      "options": {
+        "true": "Enabled",
+        "false": "Disabled"
+      }
+    },
+    "smog_sensors_enabled": {
       "options": {
         "true": "Enabled",
         "false": "Disabled"

@@ -32,6 +32,7 @@
 | 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
 | 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
 | 📍 **Map station sensors** | Optional temperature, 24-hour precipitation, wind speed and gust from one named or identified Időkép station |
+| 🌫️ **Smog sensors** | Optional PM10 and PM2.5 hourly averages for matching smog-map stations |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
 | ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
 | 📍 **Many places** | Any number of places, one device per place |
@@ -61,7 +62,7 @@ For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followe
 2. Type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
 3. Add more places the same way.
 
-- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days; optionally enable map station sensors and enter the point's name or ID.
+- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days; optionally enable map station sensors and enter the point's name or ID. Smog sensors are offered only when the configured settlement matches a station on the smog map.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
 
 ### 🧩 Entities (for a place called Érd)
@@ -78,6 +79,7 @@ For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followe
 | 📍 `sensor.idokep_erd_station_temperature` | Optional selected-station temperature (°C) |
 | 🌧️ `sensor.idokep_erd_station_precipitation` | Optional selected-station 24-hour precipitation (mm) |
 | 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Optional station wind speed and gust (km/h); direction and measurement time are attributes |
+| 🌫️ `sensor.idokep_erd_<station>_pm10` / `_pm25` | Optional station PM10 and PM2.5 hourly averages (µg/m³); station, source and measurement time are attributes |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
 | 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
 | ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm in the current or next hour |
@@ -134,6 +136,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 | 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
 | 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
 | 📍 **Térképes állomásszenzorok** | Választható hőmérséklet, 24 órás csapadék, szélsebesség és széllökés egy névvel vagy azonosítóval megadott Időkép-állomásról |
+| 🌫️ **Szmogszenzorok** | Választható PM10- és PM2.5-órás átlag azokhoz a településekhez, amelyekhez mérőállomás található a Szmogtérképen |
 | ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
 | ⛈️ **Zivatar** | Zivatar az aktuális vagy a következő órában |
 | 🔌 **Kapcsolat** | Jelzi, ha az idokep.hu nem érhető el |
@@ -180,7 +183,7 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 > [!WARNING]
 > Ha az idokep.hu nem ismeri a nevet, **Budapestet mutatja helyette**. Ilyenkor a beállítás hibát jelez („Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: Budapest”), így nem kapsz véletlenül budapesti adatokat.
 
-- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. Itt kapcsolhatók be a térképes állomásszenzorok is; ehhez add meg a mérési pont nevét vagy azonosítóját.
+- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. Itt kapcsolhatók be a térképes állomásszenzorok is; ehhez add meg a mérési pont nevét vagy azonosítóját. A szmogszenzor kapcsolója csak akkor jelenik meg, ha az integráció a település nevével egyező mérőállomást talál a Szmogtérképen.
 - ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
 
 <a id="entitasok"></a>
@@ -201,6 +204,7 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 | 📍 `sensor.idokep_erd_station_temperature` | Választható állomási hőmérséklet (°C) |
 | 🌧️ `sensor.idokep_erd_station_precipitation` | Választható állomási 24 órás csapadék (mm) |
 | 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Választható állomási szélsebesség és széllökés (km/h); az irány és mérési idő attribútum |
+| 🌫️ `sensor.idokep_erd_<állomás>_pm10` / `_pm25` | Választható PM10- és PM2.5-órás átlag (µg/m³); az állomás, forrás és mérési idő attribútum |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen színes riasztást mutat |
 | 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Bekapcsol, ha van ilyen szintű riasztás |
 | ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |

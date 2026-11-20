@@ -94,6 +94,11 @@ class FakeClientSession:
                     place = unquote(url.rsplit("/", 1)[-1])
                     page = page.replace("Érd időjárás", f"{place} időjárás")
                 return FakeResponse(page)
+        if url.endswith("/szmog"):
+            return FakeResponse(
+                "<script>window.szmogTerkepek = []; "
+                'window.szmogTerkepek.push({"allomasok":[]});</script>'
+            )
         raise AssertionError(f"Unexpected URL: {url}")
 
 

@@ -26,6 +26,8 @@ FORECAST_DAYS_CHOICES = (15, 30)
 CONF_STATION_SENSORS_ENABLED = "station_sensors_enabled"
 CONF_MEASUREMENT_POINT = "measurement_point"
 DEFAULT_STATION_SENSORS_ENABLED = False
+CONF_SMOG_SENSORS_ENABLED = "smog_sensors_enabled"
+CONF_SMOG_STATIONS = "smog_stations"
 
 # Version 1 of this integration (before multiple locations).
 LEGACY_CONF_LOCATION = "location_name"
@@ -46,6 +48,7 @@ ATTR_API_CURRENT = "current"
 ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
 ATTR_API_STATION_SENSORS = "station_sensors"
+ATTR_API_SMOG_SENSORS = "smog_sensors"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
