@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 
 from custom_components.idokep.coordinator import (
+    FetchPollenData,
+    FetchPollenLocation,
     FetchSmogData,
     FetchSmogStations,
     FetchStationWeatherData,
@@ -127,3 +129,40 @@ async def test_smog_data_is_deduplicated_and_contains_measurements() -> None:
     assert data["erd-1"]["source"] == "OLM"
     assert data["bud-1"]["pm10"] == 21
     assert data["bud-1"]["pm25"] is None
+
+
+def _pollen_page() -> str:
+    """Return image-map tooltips for one data location and one empty location."""
+    return (
+        '<map name="pollen">'
+        "<area onmouseover='Tip(\"<strong>Érd</strong><br/>"
+        "<font>Pázsitfűfélék: alacsony</font><br/>"
+        "<font>Parlagfű: nincs</font>\")'>"
+        "<area onmouseover='Tip(\"<strong>Szekszárd</strong><br/>\")'>"
+        "</map>"
+    )
+
+
+async def test_pollen_lookup_matches_case_but_preserves_accents() -> None:
+    """Pollen map location matching is case-insensitive and accent-sensitive."""
+    session = FakeClientSession({"/pollen": _pollen_page()})
+
+    match = await FetchPollenLocation(session, "ÉRD")
+    accentless = await FetchPollenLocation(session, "erd")
+    no_measurements = await FetchPollenLocation(session, "Szekszárd")
+
+    assert match == {
+        "city": "Érd",
+        "values": {"grass": "alacsony", "ragweed": "nincs"},
+    }
+    assert accentless is None
+    assert no_measurements is None
+
+
+async def test_pollen_data_returns_only_qualitative_levels() -> None:
+    """Pollen values are read as the categories and levels shown in tooltips."""
+    session = FakeClientSession({"/pollen": _pollen_page()})
+
+    data = await FetchPollenData(session, "Érd")
+
+    assert data == {"grass": "alacsony", "ragweed": "nincs"}

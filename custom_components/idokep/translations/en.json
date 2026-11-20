@@ -66,6 +66,30 @@
       },
       "station_wind_gust": {
         "name": "Station wind gust"
+      },
+      "pollen_grass": {
+        "name": "Grass pollen"
+      },
+      "pollen_plantain": {
+        "name": "Plantain pollen"
+      },
+      "pollen_nettle": {
+        "name": "Nettle pollen"
+      },
+      "pollen_hemp": {
+        "name": "Hemp pollen"
+      },
+      "pollen_goosefoot": {
+        "name": "Goosefoot pollen"
+      },
+      "pollen_ragweed": {
+        "name": "Ragweed pollen"
+      },
+      "pollen_mugwort": {
+        "name": "Mugwort pollen"
+      },
+      "pollen_mold": {
+        "name": "Mold spores"
       }
     },
     "binary_sensor": {
@@ -93,11 +117,12 @@
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps. Smog sensors are offered only when the location has a matching station on the smog map.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps. Smog and pollen sensors are offered only when matching data is found for the location.",
         "data": {
           "forecast_days": "Daily forecast",
           "station_sensors_enabled": "Enable map station sensors",
           "smog_sensors_enabled": "Enable smog sensors",
+          "pollen_sensors_enabled": "Enable pollen sensors",
           "measurement_point": "Measurement point name or ID"
         },
         "data_description": {
@@ -123,6 +148,12 @@
       }
     },
     "smog_sensors_enabled": {
+      "options": {
+        "true": "Enabled",
+        "false": "Disabled"
+      }
+    },
+    "pollen_sensors_enabled": {
       "options": {
         "true": "Enabled",
         "false": "Disabled"

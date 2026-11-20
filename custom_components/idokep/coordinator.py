@@ -39,6 +39,8 @@ from .const import (
     ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
+    ATTR_API_POLLEN_LOCATION,
+    ATTR_API_POLLEN_SENSORS,
     ATTR_API_SHORT_FORECAST,
     ATTR_API_SMOG_SENSORS,
     ATTR_API_STATION_SENSORS,
@@ -48,12 +50,15 @@ from .const import (
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
     CONF_MEASUREMENT_POINT,
+    CONF_POLLEN_LOCATION,
+    CONF_POLLEN_SENSORS_ENABLED,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
     CONF_STATION_SENSORS_ENABLED,
     DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
     DOMAIN,
+    POLLEN_CATEGORIES,
     USER_AGENT_TEMPLATE,
     entry_unique_id,
 )
@@ -827,7 +832,7 @@ async def _fetch_station_precipitation(
     return rows
 
 
-def _smog_location_key(value: str) -> str:
+def _location_match_key(value: str) -> str:
     """Normalize capitalization while keeping accents significant."""
     return unicodedata.normalize("NFC", value.strip()).casefold()
 
@@ -892,7 +897,7 @@ async def FetchSmogStations(
 ) -> list[dict[str, Any]]:
     """Find smog stations whose settlement matches the weather location."""
     soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
-    key = _smog_location_key(location)
+    key = _location_match_key(location)
     return [
         {
             "id": station["id"],
@@ -902,7 +907,7 @@ async def FetchSmogStations(
             "has_pm25": station["pm25"] is not None,
         }
         for station in parse_smog_stations(soup)
-        if _smog_location_key(station["city"]) == key
+        if _location_match_key(station["city"]) == key
     ]
 
 
@@ -921,6 +926,77 @@ async def FetchSmogData(
         _LOGGER.warning("Unable to fetch Időkép smog station data: %s", err)
         return dict.fromkeys(station_ids)
     return {station_id: observations.get(station_id) for station_id in station_ids}
+
+
+def parse_pollen_locations(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Parse qualitative pollen levels from the image-map tooltips."""
+    pollen_map = soup.find("map", attrs={"name": "pollen"})
+    if not isinstance(pollen_map, Tag):
+        raise StationDataError("Pollen map was not found")
+
+    locations = []
+    for area in pollen_map.find_all("area"):
+        onmouseover = area.get("onmouseover")
+        if not isinstance(onmouseover, str):
+            continue
+        match = re.search(r"""Tip\(\s*(["'])(.*?)\1\s*\)""", onmouseover)
+        if match is None:
+            continue
+
+        tooltip = BeautifulSoup(match.group(2), "html.parser")
+        city_element = tooltip.find("strong")
+        if city_element is None:
+            continue
+        city = city_element.get_text(strip=True)
+        values = {}
+        for font in tooltip.find_all("font"):
+            label, separator, level = font.get_text(" ", strip=True).partition(":")
+            category = POLLEN_CATEGORIES.get(label.strip())
+            if category and separator and level.strip():
+                values[category] = level.strip()
+        if city:
+            locations.append({"city": city, "values": values})
+    return locations
+
+
+def _find_pollen_location(
+    locations: list[dict[str, Any]], location: str
+) -> dict[str, Any] | None:
+    """Find a location with actual category values; accents remain significant."""
+    key = _location_match_key(location)
+    return next(
+        (
+            pollen_location
+            for pollen_location in locations
+            if pollen_location["values"]
+            and _location_match_key(pollen_location["city"]) == key
+        ),
+        None,
+    )
+
+
+async def FetchPollenLocation(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+) -> dict[str, Any] | None:
+    """Find pollen data for one location on the Időkép map."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
+    return _find_pollen_location(parse_pollen_locations(soup), location)
+
+
+async def FetchPollenData(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+) -> dict[str, str]:
+    """Fetch qualitative pollen levels without failing weather updates."""
+    try:
+        pollen_location = await FetchPollenLocation(session, location, request_headers)
+    except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+        _LOGGER.warning("Unable to fetch Időkép pollen data for %r: %s", location, err)
+        return {}
+    return pollen_location["values"] if pollen_location else {}
 
 
 async def FetchStationWeatherData(
@@ -1053,6 +1129,7 @@ async def FetchWeatherData(
     station_sensors_enabled: bool = False,
     measurement_point: str | None = None,
     smog_station_ids: list[str] | None = None,
+    pollen_location: str | None = None,
 ) -> dict:
     """Download and parse the current weather and the forecasts.
 
@@ -1097,6 +1174,12 @@ async def FetchWeatherData(
     if smog_station_ids:
         smog_sensors = await FetchSmogData(session, smog_station_ids, request_headers)
 
+    pollen_sensors: dict[str, str] = {}
+    if pollen_location:
+        pollen_sensors = await FetchPollenData(
+            session, pollen_location, request_headers
+        )
+
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
             f"No weather data found on idokep.hu for {location!r}; "
@@ -1112,6 +1195,8 @@ async def FetchWeatherData(
         ATTR_API_DAILY_FORECAST: daily,
         ATTR_API_STATION_SENSORS: station_sensors,
         ATTR_API_SMOG_SENSORS: smog_sensors,
+        ATTR_API_POLLEN_SENSORS: pollen_sensors,
+        ATTR_API_POLLEN_LOCATION: pollen_location,
     }
 
 
@@ -1187,6 +1272,11 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                         )
                     ]
                     if self.config_entry.options.get(CONF_SMOG_SENSORS_ENABLED, False)
+                    else None
+                ),
+                (
+                    self.config_entry.data.get(CONF_POLLEN_LOCATION)
+                    if self.config_entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False)
                     else None
                 ),
             )

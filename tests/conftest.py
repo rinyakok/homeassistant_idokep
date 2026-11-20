@@ -99,6 +99,8 @@ class FakeClientSession:
                 "<script>window.szmogTerkepek = []; "
                 'window.szmogTerkepek.push({"allomasok":[]});</script>'
             )
+        if url.endswith("/pollen"):
+            return FakeResponse('<map name="pollen"></map>')
         raise AssertionError(f"Unexpected URL: {url}")
 
 

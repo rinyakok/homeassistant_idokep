@@ -27,15 +27,20 @@ from .const import (
     ATTR_API_CURRENT,
     ATTR_API_HAZARDS,
     ATTR_API_NATIVE_TEMPERATURE,
+    ATTR_API_POLLEN_LOCATION,
+    ATTR_API_POLLEN_SENSORS,
     ATTR_API_SHORT_FORECAST,
     ATTR_API_SMOG_SENSORS,
     ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     ATTRIBUTION,
+    CONF_POLLEN_LOCATION,
+    CONF_POLLEN_SENSORS_ENABLED,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
     CONF_STATION_SENSORS_ENABLED,
+    POLLEN_CATEGORIES,
 )
 from .coordinator import WeatherUpdateCoordinator
 from .entity import idokep_device_info
@@ -86,6 +91,19 @@ def _station_attributes(key: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     return attributes
 
 
+def _pollen_value(key: str) -> Callable[[dict[str, Any]], StateType]:
+    """Return one qualitative pollen level."""
+    return lambda data: data.get(ATTR_API_POLLEN_SENSORS, {}).get(key)
+
+
+def _pollen_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """Return the location and source for pollen readings."""
+    return {
+        "location": data.get(ATTR_API_POLLEN_LOCATION),
+        "source": "Időkép Pollentérkép",
+    }
+
+
 # The keys are part of the unique IDs; they match FabianGabor/HA-Idokep.
 SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
     IdokepSensorEntityDescription(
@@ -129,6 +147,16 @@ SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
         value_fn=_today_hazard,
         attributes_fn=lambda data: {"days": data.get(ATTR_API_HAZARDS, [])},
     ),
+)
+
+POLLEN_SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = tuple(
+    IdokepSensorEntityDescription(
+        key=f"pollen_{category}",
+        translation_key=f"pollen_{category}",
+        value_fn=_pollen_value(category),
+        attributes_fn=_pollen_attributes,
+    )
+    for category in POLLEN_CATEGORIES.values()
 )
 
 STATION_SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
@@ -180,6 +208,10 @@ async def async_setup_entry(
     descriptions = SENSOR_TYPES
     if entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
         descriptions += STATION_SENSOR_TYPES
+    if entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False) and entry.data.get(
+        CONF_POLLEN_LOCATION
+    ):
+        descriptions += POLLEN_SENSOR_TYPES
     entities: list[SensorEntity] = [
         IdokepSensor(coordinator, description) for description in descriptions
     ]

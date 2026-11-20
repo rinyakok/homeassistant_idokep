@@ -28,6 +28,19 @@ CONF_MEASUREMENT_POINT = "measurement_point"
 DEFAULT_STATION_SENSORS_ENABLED = False
 CONF_SMOG_SENSORS_ENABLED = "smog_sensors_enabled"
 CONF_SMOG_STATIONS = "smog_stations"
+CONF_POLLEN_SENSORS_ENABLED = "pollen_sensors_enabled"
+CONF_POLLEN_LOCATION = "pollen_location"
+
+POLLEN_CATEGORIES = {
+    "Pázsitfűfélék": "grass",
+    "Útifű": "plantain",
+    "Csalánfélék": "nettle",
+    "Kenderfélék": "hemp",
+    "Libatopfélék": "goosefoot",
+    "Parlagfű": "ragweed",
+    "Üröm": "mugwort",
+    "Gombák": "mold",
+}
 
 # Version 1 of this integration (before multiple locations).
 LEGACY_CONF_LOCATION = "location_name"
@@ -49,6 +62,8 @@ ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
 ATTR_API_STATION_SENSORS = "station_sensors"
 ATTR_API_SMOG_SENSORS = "smog_sensors"
+ATTR_API_POLLEN_SENSORS = "pollen_sensors"
+ATTR_API_POLLEN_LOCATION = "pollen_location"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
