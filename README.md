@@ -31,6 +31,7 @@
 |---|---|
 | 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
 | 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
+| 📍 **Map station sensors** | Optional temperature, 24-hour precipitation, wind speed and gust from one named or identified Időkép station |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
 | ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
 | 📍 **Many places** | Any number of places, one device per place |
@@ -60,7 +61,7 @@ For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followe
 2. Type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
 3. Add more places the same way.
 
-- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days.
+- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days; optionally enable map station sensors and enter the point's name or ID.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
 
 ### 🧩 Entities (for a place called Érd)
@@ -74,6 +75,9 @@ For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followe
 | 📝 `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
 | 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
+| 📍 `sensor.idokep_erd_station_temperature` | Optional selected-station temperature (°C) |
+| 🌧️ `sensor.idokep_erd_station_precipitation` | Optional selected-station 24-hour precipitation (mm) |
+| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Optional station wind speed and gust (km/h); direction and measurement time are attributes |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
 | 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
 | ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm in the current or next hour |
@@ -92,7 +96,7 @@ Both use the `idokep` domain, so only one can be installed.
 
 ### 🚧 Limits
 
-idokep.hu has no public API. The integration reads the web pages every 20 minutes, so a change on the website can break parts of it. The rest keeps working, and the problem is logged. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
+idokep.hu has no public API. The integration reads the web pages every 20 minutes, so a change on the website can break parts of it. Map station sensors are optional; enter the station name or ID in the integration options. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
 
 ---
 
@@ -129,6 +133,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 |---|---|
 | 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
 | 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
+| 📍 **Térképes állomásszenzorok** | Választható hőmérséklet, 24 órás csapadék, szélsebesség és széllökés egy névvel vagy azonosítóval megadott Időkép-állomásról |
 | ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
 | ⛈️ **Zivatar** | Zivatar az aktuális vagy a következő órában |
 | 🔌 **Kapcsolat** | Jelzi, ha az idokep.hu nem érhető el |
@@ -175,7 +180,7 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 > [!WARNING]
 > Ha az idokep.hu nem ismeri a nevet, **Budapestet mutatja helyette**. Ilyenkor a beállítás hibát jelez („Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: Budapest”), így nem kapsz véletlenül budapesti adatokat.
 
-- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. A 30 naposhoz frissítésenként eggyel több oldalt tölt le az integráció.
+- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. Itt kapcsolhatók be a térképes állomásszenzorok is; ehhez add meg a mérési pont nevét vagy azonosítóját.
 - ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
 
 <a id="entitasok"></a>
@@ -193,6 +198,9 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 | 📝 `sensor.idokep_erd_short_forecast` | Rövid szöveges előrejelzés (pl. „Kettősfronti hatás várható”) |
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Mai napkelte és napnyugta |
 | 📅 `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
+| 📍 `sensor.idokep_erd_station_temperature` | Választható állomási hőmérséklet (°C) |
+| 🌧️ `sensor.idokep_erd_station_precipitation` | Választható állomási 24 órás csapadék (mm) |
+| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Választható állomási szélsebesség és széllökés (km/h); az irány és mérési idő attribútum |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen színes riasztást mutat |
 | 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Bekapcsol, ha van ilyen szintű riasztás |
 | ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Bekapcsol, ha az aktuális vagy a következő órára zivatart jeleznek |
@@ -201,7 +209,7 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 > [!NOTE]
 > Az entitásazonosítók a Home Assistant nyelvét követik az entitás létrehozásakor. Magyar nyelvnél például `sensor.idokep_erd_napkelte` lesz. A pontos azonosítót az entitás beállításainál látod.
 
-A **weather entitás** további attribútumai: `short_forecast` (rövid előrejelzés), `precipitation` és `precipitation_probability` (a következő óra csapadéka mm-ben és csapadékesélye %-ban).
+A **weather entitás** további attribútumai: `short_forecast` (rövid előrejelzés), `precipitation` és `precipitation_probability` (a következő óra csapadéka mm-ben és csapadékesélye %-ban). Az állomásszenzorok a kiválasztott térképpont mérési idejét, nevét, azonosítóját és adatforrását is megadják. Nem minden állomás szolgáltat minden mérési típust; ilyenkor az adott szenzor értéke ismeretlen.
 
 <a id="riasztasok"></a>
 

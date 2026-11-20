@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
-from datetime import date, datetime, time, timedelta, tzinfo
+import unicodedata
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from math import isfinite
 from typing import Any
 
 import aiohttp
@@ -36,11 +40,14 @@ from .const import (
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
     ATTR_API_SHORT_FORECAST,
+    ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     BASE_IDOKEP_URL,
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
+    CONF_MEASUREMENT_POINT,
+    CONF_STATION_SENSORS_ENABLED,
     DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
     DOMAIN,
@@ -628,6 +635,314 @@ async def _fetch_page(
         return BeautifulSoup(await response.text(), "html.parser")
 
 
+class StationDataError(ValueError):
+    """A map page or its station data is missing or malformed."""
+
+
+def _json_number(value: Any) -> float | None:
+    """Return a finite JSON number, excluding booleans and missing values."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if isfinite(number) else None
+
+
+def _json_in_script(soup: BeautifulSoup, marker: str) -> dict[str, Any]:
+    """Read an object assigned to a JavaScript variable without executing it."""
+    decoder = json.JSONDecoder()
+    for script in soup.find_all("script"):
+        text = script.string or script.get_text()
+        marker_index = text.find(marker)
+        if marker_index < 0:
+            continue
+        equals_index = text.find("=", marker_index + len(marker))
+        if equals_index < 0:
+            continue
+        json_index = equals_index + 1
+        while json_index < len(text) and text[json_index].isspace():
+            json_index += 1
+        try:
+            value, _ = decoder.raw_decode(text, json_index)
+        except json.JSONDecodeError as err:
+            raise StationDataError(f"Invalid {marker} data") from err
+        if isinstance(value, dict):
+            return value
+        raise StationDataError(f"Unexpected {marker} data")
+    raise StationDataError(f"{marker} data not found")
+
+
+def _pushed_json_objects(soup: BeautifulSoup, marker: str) -> list[dict[str, Any]]:
+    """Read objects passed to a JavaScript array's push method."""
+    decoder = json.JSONDecoder()
+    objects = []
+    for script in soup.find_all("script"):
+        text = script.string or script.get_text()
+        cursor = 0
+        while (marker_index := text.find(marker, cursor)) >= 0:
+            push_index = text.find(".push(", marker_index + len(marker))
+            if push_index < 0:
+                break
+            json_index = push_index + len(".push(")
+            while json_index < len(text) and text[json_index].isspace():
+                json_index += 1
+            try:
+                value, end = decoder.raw_decode(text, json_index)
+            except json.JSONDecodeError as err:
+                raise StationDataError(f"Invalid {marker} data") from err
+            if isinstance(value, dict):
+                objects.append(value)
+            cursor = end
+    if not objects:
+        raise StationDataError(f"{marker} data not found")
+    return objects
+
+
+def _station_rows(data: Any, key: str) -> list[list[Any]]:
+    """Validate a station list embedded in map data."""
+    if not isinstance(data, dict) or not isinstance(data.get(key), list):
+        raise StationDataError(f"Map station list {key!r} is missing")
+    return data[key]
+
+
+def _station_query_key(value: str) -> str:
+    """Normalize a station name or ID, ignoring case and accents."""
+    decomposed = unicodedata.normalize("NFKD", value.strip().casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _find_station(
+    rows: list[list[Any]],
+    query: str,
+    *,
+    name_index: int,
+    id_index: int,
+    timestamp_index: int,
+) -> list[Any] | None:
+    """Find the freshest station matching its displayed name or ID."""
+    key = _station_query_key(query)
+    matches = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) <= max(
+            name_index, id_index, timestamp_index
+        ):
+            continue
+        name, station_id = row[name_index], row[id_index]
+        if key not in {
+            _station_query_key(value)
+            for value in (name, station_id)
+            if isinstance(value, str)
+        }:
+            continue
+        timestamp = _json_number(row[timestamp_index])
+        if timestamp is not None:
+            matches.append((timestamp, row))
+    return max(matches, key=lambda match: match[0])[1] if matches else None
+
+
+def _station_observation(
+    row: list[Any],
+    *,
+    value_index: int,
+    timestamp_index: int,
+    latitude_index: int,
+    longitude_index: int,
+    name_index: int,
+    id_index: int,
+    source_index: int | None = None,
+    extra: dict[str, float | None] | None = None,
+) -> dict[str, Any] | None:
+    """Convert one map station row into a Home Assistant-friendly record."""
+    required_index = max(
+        value_index,
+        timestamp_index,
+        latitude_index,
+        longitude_index,
+        name_index,
+        id_index,
+        source_index if source_index is not None else 0,
+    )
+    if len(row) <= required_index:
+        return None
+    value = _json_number(row[value_index])
+    timestamp = _json_number(row[timestamp_index])
+    latitude = _json_number(row[latitude_index])
+    longitude = _json_number(row[longitude_index])
+    if None in (value, timestamp, latitude, longitude):
+        return None
+    try:
+        measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
+    except OverflowError, OSError, ValueError:
+        return None
+    observation = {
+        "value": value,
+        "measured_at": measured_at,
+        "station_name": row[name_index],
+        "station_id": row[id_index],
+        "source": row[source_index] if source_index is not None else "Időkép station",
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+    if extra:
+        observation.update(extra)
+    return observation
+
+
+async def _fetch_station_temperature(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch temperature station measurements from the live map JSON."""
+    url = f"{BASE_IDOKEP_URL}/terkep/homerseklet/homerseklet_hu.json"
+    async with session.get(
+        url, headers=request_headers, timeout=REQUEST_TIMEOUT
+    ) as response:
+        response.raise_for_status()
+        text = await response.text()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as err:
+        raise StationDataError("Temperature map returned invalid JSON") from err
+    return _station_rows(data, "meresek")
+
+
+async def _fetch_station_wind(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch wind station measurements embedded in the wind map page."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szel", request_headers)
+    return _station_rows(_json_in_script(soup, "window.szelterkep"), "allomasok")
+
+
+async def _fetch_station_precipitation(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch station measurements embedded in the precipitation map page."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/csapadek", request_headers)
+    maps = _pushed_json_objects(soup, "window.csapadekTerkepek")
+    rows = []
+    for map_data in maps:
+        rows.extend(_station_rows(map_data, "allomasok"))
+    return rows
+
+
+async def FetchStationWeatherData(
+    session: aiohttp.ClientSession,
+    measurement_point: str,
+    request_headers: dict | None = None,
+) -> dict[str, dict[str, Any] | None]:
+    """Read available temperature, precipitation and wind data for one station."""
+    if not measurement_point.strip():
+        raise UpdateFailed("A measurement point name or ID is required")
+
+    sources = (
+        ("temperature", _fetch_station_temperature(session, request_headers)),
+        ("wind", _fetch_station_wind(session, request_headers)),
+        ("precipitation", _fetch_station_precipitation(session, request_headers)),
+    )
+
+    async def fetch_source(source: str, request: Any) -> list[list[Any]] | None:
+        try:
+            return await request
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            _LOGGER.warning("Unable to fetch Időkép %s station data: %s", source, err)
+            return None
+
+    results = await asyncio.gather(
+        *(fetch_source(source, request) for source, request in sources)
+    )
+    rows_by_source: dict[str, list[list[Any]]] = {}
+    for (source, _), result in zip(sources, results, strict=True):
+        if result is not None:
+            rows_by_source[source] = result
+
+    temperature_row = _find_station(
+        rows_by_source.get("temperature", []),
+        measurement_point,
+        name_index=4,
+        id_index=6,
+        timestamp_index=3,
+    )
+    wind_row = _find_station(
+        rows_by_source.get("wind", []),
+        measurement_point,
+        name_index=6,
+        id_index=8,
+        timestamp_index=5,
+    )
+    precipitation_row = _find_station(
+        rows_by_source.get("precipitation", []),
+        measurement_point,
+        name_index=4,
+        id_index=5,
+        timestamp_index=0,
+    )
+
+    temperature = (
+        _station_observation(
+            temperature_row,
+            value_index=2,
+            timestamp_index=3,
+            latitude_index=0,
+            longitude_index=1,
+            name_index=4,
+            id_index=6,
+            source_index=5,
+        )
+        if temperature_row
+        else None
+    )
+    precipitation = (
+        _station_observation(
+            precipitation_row,
+            value_index=3,
+            timestamp_index=0,
+            latitude_index=1,
+            longitude_index=2,
+            name_index=4,
+            id_index=5,
+            extra={
+                "radar_precipitation": _json_number(precipitation_row[6])
+                if len(precipitation_row) > 6
+                else None
+            },
+        )
+        if precipitation_row
+        else None
+    )
+    wind_speed = None
+    if wind_row and len(wind_row) > 8:
+        wind_gust_value = _json_number(wind_row[4])
+        wind_speed = _station_observation(
+            wind_row,
+            value_index=3,
+            timestamp_index=5,
+            latitude_index=0,
+            longitude_index=1,
+            name_index=6,
+            id_index=8,
+            source_index=7,
+            extra={
+                "wind_direction_degrees": _json_number(wind_row[2]),
+                "wind_gust": (
+                    wind_gust_value
+                    if wind_gust_value is not None and wind_gust_value >= 0
+                    else None
+                ),
+            },
+        )
+    wind_gust = None
+    if wind_speed is not None and wind_speed["wind_gust"] is not None:
+        wind_gust = {
+            **wind_speed,
+            "value": wind_speed["wind_gust"],
+        }
+    return {
+        "temperature": temperature,
+        "precipitation": precipitation,
+        "wind_speed": wind_speed,
+        "wind_gust": wind_gust,
+    }
+
+
 # ======================= Fetch Forecast data ============================
 async def FetchWeatherData(
     session: aiohttp.ClientSession,
@@ -636,6 +951,8 @@ async def FetchWeatherData(
     budapest_tz: tzinfo,
     request_headers: dict | None = None,
     forecast_days: int = DEFAULT_FORECAST_DAYS,
+    station_sensors_enabled: bool = False,
+    measurement_point: str | None = None,
 ) -> dict:
     """Download and parse the current weather and the forecasts.
 
@@ -670,6 +987,12 @@ async def FetchWeatherData(
         # Keep the 15 days if the 30-day page can't be read.
         daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
+    station_sensors: dict[str, dict[str, Any] | None] = {}
+    if station_sensors_enabled:
+        station_sensors = await FetchStationWeatherData(
+            session, measurement_point or "", request_headers
+        )
+
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
             f"No weather data found on idokep.hu for {location!r}; "
@@ -683,6 +1006,7 @@ async def FetchWeatherData(
         ATTR_API_CURRENT: current,
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
+        ATTR_API_STATION_SENSORS: station_sensors,
     }
 
 
@@ -708,6 +1032,7 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
         self._location: str = entry.data[CONF_LOCATION]
+        self._station_not_found_logged = False
         self._fallback_logged = False
         self._attr_supported_features = (
             WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
@@ -747,11 +1072,23 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 self.config_entry.options.get(
                     CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
                 ),
+                self.config_entry.options.get(CONF_STATION_SENSORS_ENABLED, False),
+                self.config_entry.options.get(CONF_MEASUREMENT_POINT),
             )
         except (aiohttp.ClientError, TimeoutError) as err:
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err
 
         resolved = data[ATTR_API_LOCATION]
+        if self.config_entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
+            found = any(data[ATTR_API_STATION_SENSORS].values())
+            if not found and not self._station_not_found_logged:
+                self._station_not_found_logged = True
+                _LOGGER.warning(
+                    "No Időkép map measurements found for point %r",
+                    self.config_entry.options.get(CONF_MEASUREMENT_POINT),
+                )
+            elif found:
+                self._station_not_found_logged = False
         if (
             resolved
             and entry_unique_id(resolved) != entry_unique_id(self._location)
