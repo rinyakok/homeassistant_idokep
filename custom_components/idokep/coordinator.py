@@ -555,15 +555,19 @@ def _parse_hourly_card(
         rotate = re.search(r"--rotateAngle:\s*(\d+)deg", style)
         wind_bearing = int(rotate.group(1)) if rotate else None
 
-    # The precipitation amount is in an HTML comment ("<!--7 mm-->").
+    # The chance of rain is shown for every hour that has one, also when no
+    # amount is forecast (the card then has "rainlevel-na" instead).
+    chance = _find_optional(card, "div", False, class_="ik hourly-rain-chance")
+    precipitation_probability = _first_int(_text(chance)) or 0
+
+    # The amount is in an HTML comment, in tenths of a millimetre:
+    # "<!--34 mm-->" is 3.4 mm. The hourly values of a day add up to the
+    # daily amount, which the daily forecast shows in real millimetres.
     precipitation = 0.0
-    precipitation_probability = 0
     rain_level = card.find("div", attrs={"class": "ik hourly-rainlevel"})
     if rain_level is not None:
         comment = rain_level.find(string=lambda text: isinstance(text, Comment))
-        precipitation = _first_float(comment) or 0.0
-        chance = _find_optional(card, "div", False, class_="ik hourly-rain-chance")
-        precipitation_probability = _first_int(_text(chance))
+        precipitation = round((_first_float(comment) or 0.0) / 10, 1)
 
     return Forecast(
         datetime=forecast_datetime.astimezone(local_tz).isoformat(),
