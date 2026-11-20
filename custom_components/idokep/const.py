@@ -22,6 +22,11 @@ CONF_FORECAST_DAYS = "forecast_days"
 DEFAULT_FORECAST_DAYS = 15
 FORECAST_DAYS_CHOICES = (15, 30)
 
+# Optional map station sensors.
+CONF_STATION_SENSORS_ENABLED = "station_sensors_enabled"
+CONF_MEASUREMENT_POINT = "measurement_point"
+DEFAULT_STATION_SENSORS_ENABLED = False
+
 # Version 1 of this integration (before multiple locations).
 LEGACY_CONF_LOCATION = "location_name"
 LEGACY_UNIQUE_ID = "IdokepWeatherUID"
@@ -40,6 +45,7 @@ ATTR_API_SUNSET = "sunset"
 ATTR_API_CURRENT = "current"
 ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
+ATTR_API_STATION_SENSORS = "station_sensors"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (

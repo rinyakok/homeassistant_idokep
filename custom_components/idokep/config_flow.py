@@ -17,6 +17,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -29,8 +30,11 @@ from .const import (
     ATTR_API_LOCATION,
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
+    CONF_MEASUREMENT_POINT,
+    CONF_STATION_SENSORS_ENABLED,
     CONFIG_FLOW_VERSION,
     DEFAULT_FORECAST_DAYS,
+    DEFAULT_STATION_SENSORS_ENABLED,
     DOMAIN,
     FORECAST_DAYS_CHOICES,
     entry_unique_id,
@@ -177,7 +181,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class IdokepOptionsFlow(OptionsFlow):
-    """Options of one location: the length of the daily forecast."""
+    """Options of one location."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Store the entry explicitly for Home Assistant versions before 2024.11."""
@@ -186,28 +190,59 @@ class IdokepOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Choose 15 or 30 days."""
+        """Choose the forecast length and optional station sensors."""
         if user_input is not None:
+            station_sensors_enabled = user_input[CONF_STATION_SENSORS_ENABLED]
+            measurement_point = (user_input.get(CONF_MEASUREMENT_POINT) or "").strip()
+            if station_sensors_enabled and not measurement_point:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._options_schema(user_input),
+                    errors={"base": "measurement_point_required"},
+                )
             return self.async_create_entry(
-                data={CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
+                data={
+                    CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS]),
+                    CONF_STATION_SENSORS_ENABLED: station_sensors_enabled,
+                    CONF_MEASUREMENT_POINT: measurement_point,
+                }
             )
 
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self._options_schema(),
+        )
+
+    def _options_schema(self, user_input: dict[str, Any] | None = None) -> vol.Schema:
+        """Build the options form with the saved values as defaults."""
         current = self._config_entry.options.get(
             CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
         )
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
-                        SelectSelector(
-                            SelectSelectorConfig(
-                                options=[str(d) for d in FORECAST_DAYS_CHOICES],
-                                mode=SelectSelectorMode.LIST,
-                                translation_key=CONF_FORECAST_DAYS,
-                            )
+        options = self._config_entry.options
+        point = options.get(CONF_MEASUREMENT_POINT, "")
+        if user_input is not None:
+            current = int(user_input.get(CONF_FORECAST_DAYS, current))
+            point = user_input.get(CONF_MEASUREMENT_POINT, point)
+        enabled = options.get(
+            CONF_STATION_SENSORS_ENABLED, DEFAULT_STATION_SENSORS_ENABLED
+        )
+        if user_input is not None:
+            enabled = user_input.get(CONF_STATION_SENSORS_ENABLED, enabled)
+
+        return vol.Schema(
+            {
+                vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
+                    SelectSelector(
+                        SelectSelectorConfig(
+                            options=[str(d) for d in FORECAST_DAYS_CHOICES],
+                            mode=SelectSelectorMode.LIST,
+                            translation_key=CONF_FORECAST_DAYS,
                         )
                     )
-                }
-            ),
+                ),
+                vol.Required(
+                    CONF_STATION_SENSORS_ENABLED, default=enabled
+                ): BooleanSelector(),
+                vol.Optional(CONF_MEASUREMENT_POINT, default=point): TextSelector(),
+            }
         )

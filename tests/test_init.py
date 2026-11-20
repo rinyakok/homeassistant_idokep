@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import aiohttp
 import pytest
 from homeassistant import config_entries
@@ -13,7 +15,11 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.idokep import DATA_RUNTIME, get_entry_data
-from custom_components.idokep.const import DOMAIN
+from custom_components.idokep.const import (
+    CONF_MEASUREMENT_POINT,
+    CONF_STATION_SENSORS_ENABLED,
+    DOMAIN,
+)
 
 from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture, pages_with_alerts
 
@@ -32,14 +38,54 @@ def _device(hass: HomeAssistant, identifier: str) -> dr.DeviceEntry:
     return device
 
 
-def _entry(location: str = "Érd", unique_id: str = "erd") -> MockConfigEntry:
+def _entry(
+    location: str = "Érd",
+    unique_id: str = "erd",
+    options: dict | None = None,
+) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         title=location,
         data={"location": location},
+        options=options or {},
         unique_id=unique_id,
         version=2,
     )
+
+
+def _station_map_pages() -> dict[str, str]:
+    """Return saved-format map data for one measurement point."""
+    return {
+        "/homerseklet_hu.json": json.dumps(
+            {
+                "meresek": [
+                    [
+                        47.5,
+                        19.1,
+                        12.5,
+                        1795198921,
+                        "Érd",
+                        "amator",
+                        "station-7",
+                        1,
+                        258,
+                        "Automata",
+                    ]
+                ]
+            }
+        ),
+        "/szel": (
+            "<script>window.szelterkep = "
+            '{"allomasok":[[47.5,19.1,180,4,6,1795198921,'
+            '"Érd","Automata","station-7",0]]};</script>'
+        ),
+        "/csapadek": (
+            "<script>(window.csapadekTerkepek = "
+            "window.csapadekTerkepek || []).push("
+            '{"allomasok":[[1795198921,47.5,19.1,2.4,'
+            '"Érd","station-7",3.1]]});</script>'
+        ),
+    }
 
 
 async def _setup(hass: HomeAssistant, entry: MockConfigEntry | None = None):
@@ -336,6 +382,32 @@ async def test_new_sensor_states(hass: HomeAssistant, fake_idokep) -> None:
     )
 
 
+async def test_station_sensors_when_enabled(hass: HomeAssistant, fake_idokep) -> None:
+    """Enabling map readings adds the selected point's sensors."""
+    fake_idokep.pages.update(_station_map_pages())
+    entry = _entry(
+        options={
+            CONF_STATION_SENSORS_ENABLED: True,
+            CONF_MEASUREMENT_POINT: "station-7",
+        }
+    )
+    await _setup(hass, entry)
+
+    assert hass.states.get("sensor.idokep_erd_station_temperature").state == "12.5"
+    assert hass.states.get("sensor.idokep_erd_station_precipitation").state == "2.4"
+    assert hass.states.get("sensor.idokep_erd_station_wind_speed").state == "4.0"
+    assert hass.states.get("sensor.idokep_erd_station_wind_gust").state == "6.0"
+    assert (
+        hass.states.get("sensor.idokep_erd_station_temperature").attributes[
+            "station_id"
+        ]
+        == "station-7"
+    )
+    assert any(url.endswith("/homerseklet_hu.json") for url in fake_idokep.requested)
+    assert any(url.endswith("/szel") for url in fake_idokep.requested)
+    assert any(url.endswith("/csapadek") for url in fake_idokep.requested)
+
+
 async def test_weather_extra_attributes(hass: HomeAssistant, fake_idokep) -> None:
     """Short forecast and the rain of the current hour, as in HA-Idokep."""
     await _setup(hass)
@@ -451,3 +523,19 @@ async def test_options_30_day_forecast(hass: HomeAssistant, fake_idokep) -> None
     assert entry.options == {"forecast_days": 30}
     assert len(await _daily_forecast(hass)) == 30
     assert any("/30napos/" in url for url in fake_idokep.requested)
+
+
+async def test_options_require_measurement_point_for_station_sensors(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Station sensors cannot be enabled without a point name or ID."""
+    entry = await _setup(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"forecast_days": "15", CONF_STATION_SENSORS_ENABLED: True},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "measurement_point_required"}

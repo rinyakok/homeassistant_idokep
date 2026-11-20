@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfLength, UnitOfSpeed, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -28,9 +28,11 @@ from .const import (
     ATTR_API_HAZARDS,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_SHORT_FORECAST,
+    ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     ATTRIBUTION,
+    CONF_STATION_SENSORS_ENABLED,
 )
 from .coordinator import WeatherUpdateCoordinator
 from .entity import idokep_device_info
@@ -56,6 +58,29 @@ def _today_hazard(data: dict[str, Any]) -> str | None:
 def _current(key: str) -> Callable[[dict[str, Any]], Any]:
     """Return a function that reads one value of the current weather."""
     return lambda data: data[ATTR_API_CURRENT].get(key)
+
+
+def _station_value(key: str) -> Callable[[dict[str, Any]], Any]:
+    """Return one value from a selected map station."""
+    return lambda data: (
+        data.get(ATTR_API_STATION_SENSORS, {}).get(key, {}).get("value")
+        if data.get(ATTR_API_STATION_SENSORS, {}).get(key)
+        else None
+    )
+
+
+def _station_attributes(key: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Return the location and timestamp for one map station measurement."""
+
+    def attributes(data: dict[str, Any]) -> dict[str, Any]:
+        observation = data.get(ATTR_API_STATION_SENSORS, {}).get(key)
+        return (
+            {name: value for name, value in observation.items() if name != "value"}
+            if observation
+            else {}
+        )
+
+    return attributes
 
 
 # The keys are part of the unique IDs; they match FabianGabor/HA-Idokep.
@@ -103,6 +128,44 @@ SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
     ),
 )
 
+STATION_SENSOR_TYPES: tuple[IdokepSensorEntityDescription, ...] = (
+    IdokepSensorEntityDescription(
+        key="station_temperature",
+        translation_key="station_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_station_value("temperature"),
+        attributes_fn=_station_attributes("temperature"),
+    ),
+    IdokepSensorEntityDescription(
+        key="station_precipitation",
+        translation_key="station_precipitation",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_station_value("precipitation"),
+        attributes_fn=_station_attributes("precipitation"),
+    ),
+    IdokepSensorEntityDescription(
+        key="station_wind_speed",
+        translation_key="station_wind_speed",
+        native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_station_value("wind_speed"),
+        attributes_fn=_station_attributes("wind_speed"),
+    ),
+    IdokepSensorEntityDescription(
+        key="station_wind_gust",
+        translation_key="station_wind_gust",
+        native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
+        device_class=SensorDeviceClass.WIND_SPEED,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_station_value("wind_gust"),
+        attributes_fn=_station_attributes("wind_gust"),
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -111,8 +174,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensors of one location."""
     coordinator = get_entry_data(hass, entry).coordinator
+    descriptions = SENSOR_TYPES
+    if entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
+        descriptions += STATION_SENSOR_TYPES
     async_add_entities(
-        IdokepSensor(coordinator, description) for description in SENSOR_TYPES
+        IdokepSensor(coordinator, description) for description in descriptions
     )
 
 

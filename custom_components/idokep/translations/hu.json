@@ -54,6 +54,18 @@
       },
       "warning_forecast": {
         "name": "Figyelmeztető előrejelzés"
+      },
+      "station_temperature": {
+        "name": "Állomási hőmérséklet"
+      },
+      "station_precipitation": {
+        "name": "Állomási csapadék (24 óra)"
+      },
+      "station_wind_speed": {
+        "name": "Állomási szélsebesség"
+      },
+      "station_wind_gust": {
+        "name": "Állomási széllökés"
       }
     },
     "binary_sensor": {
@@ -81,11 +93,19 @@
     "step": {
       "init": {
         "title": "Időkép beállítások",
-        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról.",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. Az állomásszenzorok a kiválasztott pont adatait olvassák le az Időkép térképeiről.",
         "data": {
-          "forecast_days": "Napi előrejelzés"
+          "forecast_days": "Napi előrejelzés",
+          "station_sensors_enabled": "Térképes állomásszenzorok bekapcsolása",
+          "measurement_point": "Mérési pont neve vagy azonosítója"
+        },
+        "data_description": {
+          "measurement_point": "Az állomás nevét vagy Időkép-azonosítóját add meg. Nem minden pont szolgáltat minden mérési adatot."
         }
       }
+    },
+    "error": {
+      "measurement_point_required": "Az állomásszenzorok bekapcsolásához add meg a mérési pont nevét vagy azonosítóját."
     }
   },
   "selector": {
@@ -93,6 +113,12 @@
       "options": {
         "15": "15 nap",
         "30": "30 nap"
+      }
+    },
+    "station_sensors_enabled": {
+      "options": {
+        "true": "Bekapcsolva",
+        "false": "Kikapcsolva"
       }
     }
   }

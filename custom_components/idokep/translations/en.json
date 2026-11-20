@@ -54,6 +54,18 @@
       },
       "warning_forecast": {
         "name": "Warning forecast"
+      },
+      "station_temperature": {
+        "name": "Station temperature"
+      },
+      "station_precipitation": {
+        "name": "Station precipitation (24 h)"
+      },
+      "station_wind_speed": {
+        "name": "Station wind speed"
+      },
+      "station_wind_gust": {
+        "name": "Station wind gust"
       }
     },
     "binary_sensor": {
@@ -81,11 +93,19 @@
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps.",
         "data": {
-          "forecast_days": "Daily forecast"
+          "forecast_days": "Daily forecast",
+          "station_sensors_enabled": "Enable map station sensors",
+          "measurement_point": "Measurement point name or ID"
+        },
+        "data_description": {
+          "measurement_point": "Use the station name or its Időkép identifier. The point may not provide every measurement."
         }
       }
+    },
+    "error": {
+      "measurement_point_required": "Enter a measurement point name or ID to enable station sensors."
     }
   },
   "selector": {
@@ -93,6 +113,12 @@
       "options": {
         "15": "15 days",
         "30": "30 days"
+      }
+    },
+    "station_sensors_enabled": {
+      "options": {
+        "true": "Enabled",
+        "false": "Disabled"
       }
     }
   }
