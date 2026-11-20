@@ -66,6 +66,30 @@
       },
       "station_wind_gust": {
         "name": "Állomási széllökés"
+      },
+      "pollen_grass": {
+        "name": "Pázsitfűfélék pollenje"
+      },
+      "pollen_plantain": {
+        "name": "Útifű pollenje"
+      },
+      "pollen_nettle": {
+        "name": "Csalánfélék pollenje"
+      },
+      "pollen_hemp": {
+        "name": "Kenderfélék pollenje"
+      },
+      "pollen_goosefoot": {
+        "name": "Libatopfélék pollenje"
+      },
+      "pollen_ragweed": {
+        "name": "Parlagfű pollenje"
+      },
+      "pollen_mugwort": {
+        "name": "Üröm pollenje"
+      },
+      "pollen_mold": {
+        "name": "Gombaspóra"
       }
     },
     "binary_sensor": {
@@ -93,11 +117,12 @@
     "step": {
       "init": {
         "title": "Időkép beállítások",
-        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. Az állomásszenzorok a kiválasztott pont adatait olvassák le az Időkép térképeiről. A szmogadatok kapcsolója csak akkor jelenik meg, ha a településhez található mérőállomás a Szmogtérképen.",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. Az állomásszenzorok a kiválasztott pont adatait olvassák le az Időkép térképeiről. A szmog- és pollenszenzorok kapcsolója csak akkor jelenik meg, ha a településhez található adat a megfelelő térképen.",
         "data": {
           "forecast_days": "Napi előrejelzés",
           "station_sensors_enabled": "Térképes állomásszenzorok bekapcsolása",
           "smog_sensors_enabled": "Szmogszenzorok bekapcsolása",
+          "pollen_sensors_enabled": "Pollenszenzorok bekapcsolása",
           "measurement_point": "Mérési pont neve vagy azonosítója"
         },
         "data_description": {
@@ -123,6 +148,12 @@
       }
     },
     "smog_sensors_enabled": {
+      "options": {
+        "true": "Bekapcsolva",
+        "false": "Kikapcsolva"
+      }
+    },
+    "pollen_sensors_enabled": {
       "options": {
         "true": "Bekapcsolva",
         "false": "Kikapcsolva"
