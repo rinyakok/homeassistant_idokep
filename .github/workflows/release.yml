@@ -1,7 +1,11 @@
-name: Release check
+name: Release
 
-# Runs when a release is published: the tag must match the version in
-# manifest.json, because Home Assistant and HACS show the manifest version.
+# Runs when a release is published:
+# 1. The tag must match the version in manifest.json, because Home Assistant
+#    and HACS show the manifest version.
+# 2. The integration is packed into idokep.zip and attached to the release.
+#    hacs.json sets zip_release, so HACS (the Marketplace) installs from this
+#    file, and its download count is the counter HACS shows.
 on:
   release:
     types: [published]
@@ -11,15 +15,20 @@ permissions:
   contents: read
 
 jobs:
-  version:
-    name: Tag matches manifest version
+  release:
+    name: Check version and attach idokep.zip
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      # Needed to attach idokep.zip to the release
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+            persist-credentials: false
       - name: Compare release tag and manifest.json version
-        env:
-          TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           manifest=$(jq -r .version custom_components/idokep/manifest.json)
           tag="${TAG#v}"
@@ -28,3 +37,16 @@ jobs:
             echo "::error file=custom_components/idokep/manifest.json::manifest.json version (${manifest}) does not match the release tag (${tag}). Update the version and publish the release again."
             exit 1
           fi
+      - name: Build idokep.zip
+        # HACS unpacks the file into custom_components/idokep/, so the files
+        # of the integration sit at the top level of the ZIP.
+        run: |
+          cd custom_components/idokep
+          zip -r -X "${RUNNER_TEMP}/idokep.zip" . -x '*__pycache__*'
+          unzip -l "${RUNNER_TEMP}/idokep.zip"
+          unzip -p "${RUNNER_TEMP}/idokep.zip" manifest.json | jq -e '.domain == "idokep"'
+      - name: Attach idokep.zip to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${TAG}" "${RUNNER_TEMP}/idokep.zip" --clobber --repo "${GITHUB_REPOSITORY}"
