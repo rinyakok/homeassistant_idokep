@@ -196,9 +196,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
             for entry in self.hass.config_entries.async_entries(DOMAIN)
         ):
             menu_options.append("radar")
-        return self.async_show_menu(
-            step_id="user", menu_options=menu_options
-        )
+        return self.async_show_menu(step_id="user", menu_options=menu_options)
 
     async def async_step_location(
         self, user_input: dict[str, Any] | None = None
