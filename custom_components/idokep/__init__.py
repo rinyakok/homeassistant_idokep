@@ -12,19 +12,22 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_LOCATION,
+    CONF_STATION_CONFIG_ENTRY,
     CONFIG_FLOW_VERSION,
     DOMAIN,
     LEGACY_CONF_LOCATION,
     LEGACY_DEFAULT_TITLE,
     LEGACY_UNIQUE_ID,
     PLATFORMS,
+    STATION_PLATFORMS,
     entry_unique_id,
     weather_unique_id,
 )
-from .coordinator import WeatherUpdateCoordinator
+from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 DATA_RUNTIME = f"{DOMAIN}_runtime"
+DATA_STATION_RUNTIME = f"{DOMAIN}_station_runtime"
 
 
 @dataclass
@@ -32,6 +35,13 @@ class IdokepData:
     """Runtime data definition."""
 
     coordinator: WeatherUpdateCoordinator
+
+
+@dataclass
+class IdokepStationData:
+    """Runtime data for one station config entry."""
+
+    coordinator: StationUpdateCoordinator
 
 
 IdokepConfigEntry = ConfigEntry
@@ -42,8 +52,23 @@ def get_entry_data(hass: HomeAssistant, entry: ConfigEntry) -> IdokepData:
     return hass.data[DATA_RUNTIME][entry.entry_id]
 
 
+def get_station_data(hass: HomeAssistant, entry: ConfigEntry) -> IdokepStationData:
+    """Return the runtime data for a station config entry."""
+    return hass.data[DATA_STATION_RUNTIME][entry.entry_id]
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Set up one Időkép location."""
+    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+        coordinator = StationUpdateCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
+        hass.data.setdefault(DATA_STATION_RUNTIME, {})[entry.entry_id] = (
+            IdokepStationData(coordinator)
+        )
+        entry.async_on_unload(entry.add_update_listener(_async_reload_on_change))
+        await hass.config_entries.async_forward_entry_setups(entry, STATION_PLATFORMS)
+        return True
+
     coordinator = WeatherUpdateCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
@@ -61,6 +86,14 @@ async def _async_reload_on_change(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Unload a config entry."""
+    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+        unloaded = await hass.config_entries.async_unload_platforms(
+            entry, STATION_PLATFORMS
+        )
+        if unloaded:
+            hass.data[DATA_STATION_RUNTIME].pop(entry.entry_id, None)
+        return unloaded
+
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         hass.data[DATA_RUNTIME].pop(entry.entry_id, None)

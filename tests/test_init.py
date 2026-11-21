@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import aiohttp
 import pytest
@@ -14,15 +15,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.idokep import DATA_RUNTIME, get_entry_data
+from custom_components.idokep import DATA_RUNTIME, get_entry_data, get_station_data
 from custom_components.idokep.const import (
     CONF_FORECAST_DAYS,
-    CONF_MEASUREMENT_POINT,
     CONF_POLLEN_LOCATION,
     CONF_POLLEN_SENSORS_ENABLED,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
-    CONF_STATION_SENSORS_ENABLED,
+    CONF_STATION_UPDATE_INTERVAL,
     DOMAIN,
 )
 
@@ -59,36 +59,30 @@ def _entry(
 
 
 def _station_map_pages() -> dict[str, str]:
-    """Return saved-format map data for one measurement point."""
+    """Return saved-format map data for two measurement points."""
     return {
         "/homerseklet_hu.json": json.dumps(
             {
                 "meresek": [
-                    [
-                        47.5,
-                        19.1,
-                        12.5,
-                        1795198921,
-                        "Érd",
-                        "amator",
-                        "station-7",
-                        1,
-                        258,
-                        "Automata",
-                    ]
+                    [47.5, 19.1, 12.5, 1795198921, "Érd", "amator", "station-7"],
+                    [47.68, 17.63, 9.0, 1795198921, "Győr", "amator", "station-8"],
                 ]
             }
         ),
         "/szel": (
             "<script>window.szelterkep = "
             '{"allomasok":[[47.5,19.1,180,4,6,1795198921,'
-            '"Érd","Automata","station-7",0]]};</script>'
+            '"Érd","Automata","station-7",0],'
+            "[47.68,17.63,90,3,5,1795198921,"
+            '"Győr","Automata","station-8",0]]};</script>'
         ),
         "/csapadek": (
             "<script>(window.csapadekTerkepek = "
             "window.csapadekTerkepek || []).push("
             '{"allomasok":[[1795198921,47.5,19.1,2.4,'
-            '"Érd","station-7",3.1]]});</script>'
+            '"Érd","station-7",3.1],'
+            "[1795198921,47.68,17.63,1.1,"
+            '"Győr","station-8",1.3]]});</script>'
         ),
     }
 
@@ -127,9 +121,27 @@ async def _start_user_flow(hass: HomeAssistant, location: str):
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "location"}
+    )
     assert result["type"] is FlowResultType.FORM
     return await hass.config_entries.flow.async_configure(
         result["flow_id"], {"location": location}
+    )
+
+
+async def _start_station_flow(hass: HomeAssistant, measurement_point: str):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "station"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"measurement_point": measurement_point}
     )
 
 
@@ -290,7 +302,6 @@ async def test_user_flow_offers_smog_only_for_accented_location(
         options["flow_id"],
         {
             "forecast_days": "15",
-            CONF_STATION_SENSORS_ENABLED: False,
             CONF_SMOG_SENSORS_ENABLED: True,
         },
     )
@@ -351,7 +362,6 @@ async def test_pollen_toggle_and_sensors_when_location_matches(
         options["flow_id"],
         {
             "forecast_days": "15",
-            CONF_STATION_SENSORS_ENABLED: False,
             CONF_POLLEN_SENSORS_ENABLED: True,
         },
     )
@@ -522,38 +532,6 @@ async def test_new_sensor_states(hass: HomeAssistant, fake_idokep) -> None:
     )
 
 
-async def test_station_sensors_when_enabled(hass: HomeAssistant, fake_idokep) -> None:
-    """Enabling map readings adds the selected point's sensors."""
-    fake_idokep.pages.update(_station_map_pages())
-    entry = _entry(
-        options={
-            CONF_STATION_SENSORS_ENABLED: True,
-            CONF_MEASUREMENT_POINT: "station-7",
-        }
-    )
-    await _setup(hass, entry)
-
-    assert hass.states.get("sensor.idokep_erd_station_temperature").state == "12.5"
-    precipitation_entity_id = er.async_get(hass).async_get_entity_id(
-        "sensor", DOMAIN, f"{entry.entry_id}_station_precipitation"
-    )
-    assert precipitation_entity_id is not None
-    precipitation_state = hass.states.get(precipitation_entity_id)
-    assert precipitation_state is not None
-    assert precipitation_state.state == "2.4"
-    assert hass.states.get("sensor.idokep_erd_station_wind_speed").state == "4.0"
-    assert hass.states.get("sensor.idokep_erd_station_wind_gust").state == "6.0"
-    assert (
-        hass.states.get("sensor.idokep_erd_station_temperature").attributes[
-            "station_id"
-        ]
-        == "station-7"
-    )
-    assert any(url.endswith("/homerseklet_hu.json") for url in fake_idokep.requested)
-    assert any(url.endswith("/szel") for url in fake_idokep.requested)
-    assert any(url.endswith("/csapadek") for url in fake_idokep.requested)
-
-
 async def test_weather_extra_attributes(hass: HomeAssistant, fake_idokep) -> None:
     """Short forecast and the rain of the current hour, as in HA-Idokep."""
     await _setup(hass)
@@ -667,21 +645,95 @@ async def test_options_30_day_forecast(hass: HomeAssistant, fake_idokep) -> None
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_FORECAST_DAYS] == 30
+    assert "station_sensors_enabled" not in entry.options
+    assert "measurement_point" not in entry.options
     assert len(await _daily_forecast(hass)) == 30
     assert any("/30napos/" in url for url in fake_idokep.requested)
 
 
-async def test_options_require_measurement_point_for_station_sensors(
+async def test_station_entries_create_separate_station_devices(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """Station sensors cannot be enabled without a point name or ID."""
-    entry = await _setup(hass)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+    """Multiple map stations can be added independently of a weather location."""
+    fake_idokep.pages.update(_station_map_pages())
 
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {"forecast_days": "15", CONF_STATION_SENSORS_ENABLED: True},
+    location = await _setup(
+        hass,
+        _entry(
+            options={
+                "station_sensors_enabled": True,
+                "measurement_point": "Érd",
+            }
+        ),
+    )
+    entity_registry = er.async_get(hass)
+    assert (
+        entity_registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{location.entry_id}_station_temperature"
+        )
+        is None
+    )
+    assert not any("/terkep/" in url for url in fake_idokep.requested)
+
+    erd_result = await _start_station_flow(hass, "station-7")
+    assert erd_result["type"] is FlowResultType.CREATE_ENTRY
+    erd_entry = erd_result["result"]
+    await hass.async_block_till_done()
+
+    gyor_result = await _start_station_flow(hass, "Győr")
+    assert gyor_result["type"] is FlowResultType.CREATE_ENTRY
+    gyor_entry = gyor_result["result"]
+    await hass.async_block_till_done()
+
+    assert erd_entry.entry_id != gyor_entry.entry_id
+    assert erd_entry.unique_id != gyor_entry.unique_id
+    assert _device(hass, erd_entry.entry_id).id != _device(hass, gyor_entry.entry_id).id
+    assert hass.states.get("sensor.idokep_erd_station_temperature").state == "12.5"
+    assert hass.states.get("sensor.idokep_gyor_station_temperature").state == "9.0"
+    assert get_station_data(hass, erd_entry).coordinator.update_interval == timedelta(
+        minutes=20
     )
 
+    duplicate = await _start_station_flow(hass, "Érd")
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
+
+    erd_options = await hass.config_entries.options.async_init(erd_entry.entry_id)
+    assert erd_options["type"] is FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(
+        erd_options["flow_id"], {CONF_STATION_UPDATE_INTERVAL: "5"}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert erd_entry.options[CONF_STATION_UPDATE_INTERVAL] == 5
+
+    gyor_options = await hass.config_entries.options.async_init(gyor_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        gyor_options["flow_id"], {CONF_STATION_UPDATE_INTERVAL: "60"}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert gyor_entry.options[CONF_STATION_UPDATE_INTERVAL] == 60
+
+    assert get_station_data(hass, erd_entry).coordinator.update_interval == timedelta(
+        minutes=5
+    )
+    assert get_station_data(hass, gyor_entry).coordinator.update_interval == timedelta(
+        hours=1
+    )
+
+
+async def test_station_flow_validates_measurement_point(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Require a station name/ID and reject unmatched map points."""
+    fake_idokep.pages.update(_station_map_pages())
+    result = await _start_station_flow(hass, "")
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "measurement_point_required"}
+    assert result["errors"] == {"base": "station_required"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"measurement_point": "missing-station"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "station_not_found"}

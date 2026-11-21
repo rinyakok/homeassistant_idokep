@@ -31,7 +31,7 @@
 |---|---|
 | 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
 | 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
-| 📍 **Map station sensors** | Optional temperature, 24-hour precipitation, wind speed and gust from one named or identified Időkép station |
+| 📍 **Map station sensors** | Add any number of stations as separate entries/devices; each has temperature, 24-hour precipitation, wind speed and gust sensors |
 | 🌫️ **Smog sensors** | Optional PM10 and PM2.5 hourly averages for matching smog-map stations |
 | 🌱 **Pollen sensors** | Optional qualitative pollen levels by type when the location appears on the pollen map |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
@@ -60,10 +60,12 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 ### ⚙️ Setup
 
 1. **Settings → Devices & services → Add integration → Időkép**.
-2. Type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
-3. Add more places the same way.
+2. Choose **Weather location** and type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
+3. To add map measurements, add Időkép again, choose **Map station sensors**, and enter the station name or ID. Repeat to add more stations.
 
-- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days; optionally enable map station sensors and enter the point's name or ID. Smog and pollen sensors are offered only when matching data is found for the configured settlement.
+- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days. Smog and pollen sensors are offered only when matching data is found for the configured settlement.
+- Each station entry has its own update interval, configurable from 5 minutes to 1 hour in 5-minute steps (default: 20 minutes).
+- Existing location entries that used map station sensors need the station added again as a separate entry; the old location-level station sensors are no longer created.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
 
 ### 🧩 Entities (for a place called Érd)
@@ -77,9 +79,9 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 | 📝 `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
 | 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
-| 📍 `sensor.idokep_erd_station_temperature` | Optional selected-station temperature (°C) |
-| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Optional selected-station 24-hour precipitation (mm) |
-| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Optional station wind speed and gust (km/h); direction and measurement time are attributes |
+| 📍 `sensor.idokep_erd_station_temperature` | Temperature (°C) from the separately added Érd station device |
+| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Station 24-hour precipitation (mm) |
+| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Station wind speed and gust (km/h); direction and measurement time are attributes |
 | 🌫️ `sensor.idokep_erd_<station>_pm10` / `_pm25` | Optional station PM10 and PM2.5 hourly averages (µg/m³); station, source and measurement time are attributes |
 | 🌱 `sensor.idokep_erd_pollen_<type>` | Optional qualitative level (`nincs`, `alacsony`, `közepes`, etc.) for each pollen type |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
@@ -100,7 +102,7 @@ Both use the `idokep` domain, so only one can be installed.
 
 ### 🚧 Limits
 
-idokep.hu has no public API. The integration reads the web pages every 20 minutes, so a change on the website can break parts of it. Map station sensors are optional; enter the station name or ID in the integration options. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
+idokep.hu has no public API. Weather and location data are read every 20 minutes; each map station has an independent, configurable 5-minute-to-1-hour update interval. A change on the website can break parts of the integration. Add map stations as separate entries using their name or ID. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
 
 ---
 
@@ -137,7 +139,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 |---|---|
 | 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
 | 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
-| 📍 **Térképes állomásszenzorok** | Választható hőmérséklet, 24 órás csapadék, szélsebesség és széllökés egy névvel vagy azonosítóval megadott Időkép-állomásról |
+| 📍 **Térképes állomásszenzorok** | Tetszőleges számú, külön bejegyzésként és eszközként felvett állomás hőmérséklet-, 24 órás csapadék-, szélsebesség- és széllökésadatai |
 | 🌫️ **Szmogszenzorok** | Választható PM10- és PM2.5-órás átlag azokhoz a településekhez, amelyekhez mérőállomás található a Szmogtérképen |
 | 🌱 **Pollenszenzorok** | Választható, pollentípusonkénti szöveges érték azokhoz a településekhez, amelyek szerepelnek a Pollentérképen |
 | ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
@@ -177,8 +179,8 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 ### ⚙️ Beállítás
 
 1. **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása**, majd válaszd az **Időkép**-et.
-2. Add meg a település nevét úgy, ahogy az idokep.hu-n szerepel. Például **Pécs** (`https://www.idokep.hu/idojaras/Pécs`).
-3. További településekhez ismételd meg.
+2. Válaszd az **Időjárási helyszín** lehetőséget, majd add meg a település nevét úgy, ahogy az idokep.hu-n szerepel. Például **Pécs** (`https://www.idokep.hu/idojaras/Pécs`).
+3. További településekhez ismételd meg. Térképes állomásszenzorokhoz újra add hozzá az Időképet, válaszd a **Térképes állomásszenzorok** lehetőséget, majd add meg az állomás nevét vagy azonosítóját. Több állomás is felvehető.
 
 > [!TIP]
 > Az ékezet elhagyható: az `erd` is Érdet jelenti. Az integráció az idokep.hu írásmódját menti el.
@@ -186,7 +188,9 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 > [!WARNING]
 > Ha az idokep.hu nem ismeri a nevet, **Budapestet mutatja helyette**. Ilyenkor a beállítás hibát jelez („Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: Budapest”), így nem kapsz véletlenül budapesti adatokat.
 
-- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. Itt kapcsolhatók be a térképes állomásszenzorok is; ehhez add meg a mérési pont nevét vagy azonosítóját. A szmog- és pollenszenzorok kapcsolója csak akkor jelenik meg, ha az integráció a településhez egyező adatot talál a megfelelő térképen.
+- 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. A szmog- és pollenszenzorok kapcsolója csak akkor jelenik meg, ha az integráció a településhez egyező adatot talál a megfelelő térképen.
+- Minden állomásbejegyzésnél külön állítható a frissítési időköz 5 perc és 1 óra között, 5 perces lépésekben (alapértelmezés: 20 perc).
+- Ha korábban a helyszín beállításainál térképes állomásszenzorokat használtál, az állomást külön bejegyzésként újra fel kell venni; a régi helyszínszintű szenzorok már nem jönnek létre.
 - ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
 
 <a id="entitasok"></a>
@@ -204,9 +208,9 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 | 📝 `sensor.idokep_erd_short_forecast` | Rövid szöveges előrejelzés (pl. „Kettősfronti hatás várható”) |
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Mai napkelte és napnyugta |
 | 📅 `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
-| 📍 `sensor.idokep_erd_station_temperature` | Választható állomási hőmérséklet (°C) |
-| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Választható állomási 24 órás csapadék (mm) |
-| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Választható állomási szélsebesség és széllökés (km/h); az irány és mérési idő attribútum |
+| 📍 `sensor.idokep_erd_station_temperature` | A külön felvett Érd állomás hőmérséklete (°C) |
+| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Az állomás 24 órás csapadéka (mm) |
+| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Az állomás szélsebessége és széllökése (km/h); az irány és mérési idő attribútum |
 | 🌫️ `sensor.idokep_erd_<állomás>_pm10` / `_pm25` | Választható PM10- és PM2.5-órás átlag (µg/m³); az állomás, forrás és mérési idő attribútum |
 | 🌱 `sensor.idokep_erd_pollen_<típus>` | Választható, pollentípusonkénti szöveges érték (pl. `nincs`, `alacsony`, `közepes`, `magas`) |
 | ⚠️ `binary_sensor.idokep_erd_weather_alert` | Bekapcsol, ha az idokep.hu bármilyen színes riasztást mutat |

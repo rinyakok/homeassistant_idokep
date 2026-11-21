@@ -2,6 +2,13 @@
   "config": {
     "step": {
       "user": {
+        "title": "Add an Időkép data source",
+        "menu_options": {
+          "location": "Weather location",
+          "station": "Map station sensors"
+        }
+      },
+      "location": {
         "title": "Add an Időkép location",
         "description": "Type the name of a Hungarian place as it is written on idokep.hu, for example Érd or Balatonfüred.",
         "data": {
@@ -9,6 +16,16 @@
         },
         "data_description": {
           "location": "Settlement name. Accents are optional: \"erd\" works for Érd."
+        }
+      },
+      "station": {
+        "title": "Add a map station",
+        "description": "Enter the station name or Időkép station ID. Each station is added as a separate device.",
+        "data": {
+          "measurement_point": "Station name or ID"
+        },
+        "data_description": {
+          "measurement_point": "Use the exact station name or its Időkép identifier."
         }
       },
       "reconfigure": {
@@ -25,10 +42,12 @@
     "error": {
       "cannot_connect": "Could not connect to idokep.hu. Try again later.",
       "location_not_found": "No weather data found on idokep.hu for this location.",
-      "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling."
+      "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling.",
+      "station_not_found": "No map measurements found for this station. Check the station name or ID.",
+      "station_required": "Enter a station name or ID."
     },
     "abort": {
-      "already_configured": "This location is already added.",
+      "already_configured": "This location or station is already added.",
       "reconfigure_successful": "The location was changed."
     }
   },
@@ -117,21 +136,20 @@
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update. Station sensors read the selected point from the Időkép maps. Smog and pollen sensors are offered only when matching data is found for the location.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Smog and pollen sensors are offered only when matching data is found for the location. Add map stations as separate Időkép entries.",
         "data": {
           "forecast_days": "Daily forecast",
-          "station_sensors_enabled": "Enable map station sensors",
           "smog_sensors_enabled": "Enable smog sensors",
-          "pollen_sensors_enabled": "Enable pollen sensors",
-          "measurement_point": "Measurement point name or ID"
-        },
-        "data_description": {
-          "measurement_point": "Use the station name or its Időkép identifier. The point may not provide every measurement."
+          "pollen_sensors_enabled": "Enable pollen sensors"
+        }
+      },
+      "station": {
+        "title": "Map station options",
+        "description": "Set how often this station's measurements are refreshed. This interval is independent for each station.",
+        "data": {
+          "station_update_interval": "Update interval"
         }
       }
-    },
-    "error": {
-      "measurement_point_required": "Enter a measurement point name or ID to enable station sensors."
     }
   },
   "selector": {
@@ -139,12 +157,6 @@
       "options": {
         "15": "15 days",
         "30": "30 days"
-      }
-    },
-    "station_sensors_enabled": {
-      "options": {
-        "true": "Enabled",
-        "false": "Disabled"
       }
     },
     "smog_sensors_enabled": {
@@ -157,6 +169,22 @@
       "options": {
         "true": "Enabled",
         "false": "Disabled"
+      }
+    },
+    "station_update_interval": {
+      "options": {
+        "5": "5 minutes",
+        "10": "10 minutes",
+        "15": "15 minutes",
+        "20": "20 minutes",
+        "25": "25 minutes",
+        "30": "30 minutes",
+        "35": "35 minutes",
+        "40": "40 minutes",
+        "45": "45 minutes",
+        "50": "50 minutes",
+        "55": "55 minutes",
+        "60": "1 hour"
       }
     }
   }

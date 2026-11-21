@@ -20,7 +20,7 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import IdokepConfigEntry, get_entry_data
+from . import IdokepConfigEntry, get_entry_data, get_station_data
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CONDITION_HU,
@@ -39,11 +39,11 @@ from .const import (
     CONF_POLLEN_SENSORS_ENABLED,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
-    CONF_STATION_SENSORS_ENABLED,
+    CONF_STATION_CONFIG_ENTRY,
     POLLEN_CATEGORIES,
 )
-from .coordinator import WeatherUpdateCoordinator
-from .entity import idokep_device_info
+from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
+from .entity import idokep_device_info, idokep_station_device_info
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -203,11 +203,17 @@ async def async_setup_entry(
     entry: IdokepConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensors of one location."""
+    """Set up the sensors of one location or map station."""
+    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+        coordinator = get_station_data(hass, entry).coordinator
+        async_add_entities(
+            IdokepStationSensor(coordinator, description)
+            for description in STATION_SENSOR_TYPES
+        )
+        return
+
     coordinator = get_entry_data(hass, entry).coordinator
     descriptions = SENSOR_TYPES
-    if entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
-        descriptions += STATION_SENSOR_TYPES
     if entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False) and entry.data.get(
         CONF_POLLEN_LOCATION
     ):
@@ -221,6 +227,37 @@ async def async_setup_entry(
             if station.get("has_pm25"):
                 entities.append(IdokepSmogSensor(coordinator, station, "pm25"))
     async_add_entities(entities)
+
+
+class IdokepStationSensor(CoordinatorEntity[StationUpdateCoordinator], SensorEntity):
+    """A map measurement from one independently configured station."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    entity_description: IdokepSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: StationUpdateCoordinator,
+        description: IdokepSensorEntityDescription,
+    ) -> None:
+        """Initialize the station sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
+        self._attr_device_info = idokep_station_device_info(coordinator.config_entry)
+
+    @property
+    def native_value(self) -> StateType | datetime:
+        """Return the latest map measurement."""
+        return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the station and measurement metadata."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data)
 
 
 class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
