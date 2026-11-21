@@ -34,6 +34,7 @@
 | 📍 **Map station sensors** | Optional temperature, 24-hour precipitation, wind speed and gust from one named or identified Időkép station |
 | 🌫️ **Smog sensors** | Optional PM10 and PM2.5 hourly averages for matching smog-map stations |
 | 🌱 **Pollen sensors** | Optional qualitative pollen levels by type when the location appears on the pollen map |
+| 🌧️ **Radar image and stream** | One global latest radar image and a camera stream cycling through images retained for up to one hour |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
 | ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
 | 📍 **Many places** | Any number of places, one device per place |
@@ -65,11 +66,14 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 
 - 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days; optionally enable map station sensors and enter the point's name or ID. Smog and pollen sensors are offered only when matching data is found for the configured settlement.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
+- 🌧️ The first place automatically creates one separate **Időkép radar** entry with a latest-image entity and a camera stream. The image history fills gradually after startup.
 
 ### 🧩 Entities (for a place called Érd)
 
 | Entity | Description |
 |---|---|
+| 🖼️ `image.idokep_radar_latest_radar_image` | Latest static Időkép radar image, shared by all places |
+| 🎞️ `camera.idokep_radar_radar_image_stream` | Cycles through radar images downloaded in the previous hour; history fills for up to an hour after startup |
 | 🌦️ `weather.idokep_erd` | Current weather; daily and hourly forecast via `weather.get_forecasts` |
 | 🌡️ `sensor.idokep_erd_temperature` | Temperature (°C) |
 | ☁️ `sensor.idokep_erd_condition` | Condition, e.g. `rainy` |
@@ -140,6 +144,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 | 📍 **Térképes állomásszenzorok** | Választható hőmérséklet, 24 órás csapadék, szélsebesség és széllökés egy névvel vagy azonosítóval megadott Időkép-állomásról |
 | 🌫️ **Szmogszenzorok** | Választható PM10- és PM2.5-órás átlag azokhoz a településekhez, amelyekhez mérőállomás található a Szmogtérképen |
 | 🌱 **Pollenszenzorok** | Választható, pollentípusonkénti szöveges érték azokhoz a településekhez, amelyek szerepelnek a Pollentérképen |
+| 🌧️ **Radarkép és képsorozat** | Egy globális legfrissebb radarkép és egy kamerastream, amely legfeljebb az elmúlt egy óra képeit játssza le |
 | ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
 | ⛈️ **Zivatar** | Zivatar az aktuális vagy a következő órában |
 | 🔌 **Kapcsolat** | Jelzi, ha az idokep.hu nem érhető el |
@@ -188,6 +193,7 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 
 - 🔧 **Beállítások (fogaskerék):** a napi előrejelzés lehet 15 napos (alapértelmezett) vagy 30 napos. Itt kapcsolhatók be a térképes állomásszenzorok is; ehhez add meg a mérési pont nevét vagy azonosítóját. A szmog- és pollenszenzorok kapcsolója csak akkor jelenik meg, ha az integráció a településhez egyező adatot talál a megfelelő térképen.
 - ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
+- 🌧️ Az első helyszín hozzáadásakor automatikusan létrejön egy külön **Időkép radar** bejegyzés a legfrissebb kép és a képsorozat entitásával. A képtörténet újraindítás után fokozatosan, legfeljebb egy óra alatt telik fel.
 
 <a id="entitasok"></a>
 
@@ -197,6 +203,8 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 
 | Entitás | Leírás |
 |---|---|
+| 🖼️ `image.idokep_radar_latest_radar_image` | A legfrissebb Időkép-radarkép, minden helyszínnel közös |
+| 🎞️ `camera.idokep_radar_radar_image_stream` | Az előző órában letöltött radarképeket ciklikusan megjelenítő kamera; újraindítás után fokozatosan telik fel a képtörténet |
 | 🌦️ `weather.idokep_erd` | Aktuális időjárás, napi és óránkénti előrejelzés |
 | 🌡️ `sensor.idokep_erd_temperature` | Aktuális hőmérséklet (°C) |
 | ☁️ `sensor.idokep_erd_condition` | Aktuális állapot Home Assistant formában (pl. `rainy`, `partlycloudy`) |

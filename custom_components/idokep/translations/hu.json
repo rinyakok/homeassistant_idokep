@@ -29,7 +29,9 @@
     },
     "abort": {
       "already_configured": "Ez a helyszín már hozzá van adva.",
-      "reconfigure_successful": "A helyszín módosult."
+      "reconfigure_successful": "A helyszín módosult.",
+      "not_supported": "Ezt a beállítást az integráció automatikusan kezeli.",
+      "radar_no_options": "A globális radarbejegyzéshez nincs további beállítás."
     }
   },
   "entity": {
@@ -110,6 +112,16 @@
       },
       "alert_red": {
         "name": "Piros riasztás"
+      }
+    },
+    "image": {
+      "latest_radar_image": {
+        "name": "Legfrissebb radarkép"
+      }
+    },
+    "camera": {
+      "radar_image_stream": {
+        "name": "Radar képsorozat"
       }
     }
   },
