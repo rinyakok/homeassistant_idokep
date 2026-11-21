@@ -17,7 +17,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
-    BooleanSelector,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -31,11 +30,11 @@ from .const import (
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
     CONF_MEASUREMENT_POINT,
-    CONF_POLLEN_LOCATION,
-    CONF_POLLEN_SENSORS_ENABLED,
+    CONF_POLLEN_CITY,
+    CONF_POLLEN_CONFIG_ENTRY,
     CONF_RADAR_CONFIG_ENTRY,
-    CONF_SMOG_SENSORS_ENABLED,
-    CONF_SMOG_STATIONS,
+    CONF_SMOG_CITY,
+    CONF_SMOG_CONFIG_ENTRY,
     CONF_STATION_CONFIG_ENTRY,
     CONF_STATION_NAME,
     CONF_STATION_UPDATE_INTERVAL,
@@ -53,8 +52,8 @@ from .const import (
 )
 from .coordinator import (
     BUDAPEST_TZ_NAME,
-    FetchPollenLocation,
-    FetchSmogStations,
+    FetchPollenCities,
+    FetchSmogCities,
     FetchStationWeatherData,
     FetchWeatherData,
     StationDataError,
@@ -112,6 +111,20 @@ def _station_schema() -> vol.Schema:
     return vol.Schema({vol.Required(CONF_MEASUREMENT_POINT): TextSelector()})
 
 
+def _city_schema(city_key: str, cities: list[str]) -> vol.Schema:
+    """Return an optional city selector populated with available map data."""
+    return vol.Schema(
+        {
+            vol.Optional(city_key): SelectSelector(
+                SelectSelectorConfig(
+                    options=cities,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
 class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Idokep: one entry per location."""
 
@@ -136,15 +149,8 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _async_check(
         self, user_input: dict[str, Any]
-    ) -> tuple[
-        str | None,
-        dict[str, str],
-        dict[str, str],
-        list[dict[str, Any]] | None,
-        str | None,
-        bool,
-    ]:
-        """Validate the location and find matching map data."""
+    ) -> tuple[str | None, dict[str, str], dict[str, str]]:
+        """Validate the location."""
         try:
             name = await async_validate_location(
                 self.hass, user_input[CONF_LOCATION].strip()
@@ -152,49 +158,15 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         except LocationError as err:
             placeholders = {"shown": err.shown or ""}
             error = "location_fallback" if err.shown else err.error
-            return None, {"base": error}, placeholders, None, None, False
-
-        session = async_get_clientsession(self.hass)
-        headers = await async_request_headers(self.hass)
-        try:
-            stations = await FetchSmogStations(
-                session,
-                user_input[CONF_LOCATION].strip(),
-                headers,
-            )
-        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
-            _LOGGER.warning(
-                "Unable to check Időkép smog stations for %r: %s", name, err
-            )
-            stations = None
-        try:
-            pollen_location = await FetchPollenLocation(
-                session, user_input[CONF_LOCATION].strip(), headers
-            )
-            pollen_lookup_failed = False
-        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
-            _LOGGER.warning(
-                "Unable to check Időkép pollen data for %r: %s",
-                name,
-                err,
-            )
-            pollen_location = None
-            pollen_lookup_failed = True
-        return (
-            name,
-            {},
-            {},
-            stations,
-            pollen_location["city"] if pollen_location else None,
-            pollen_lookup_failed,
-        )
+            return None, {"base": error}, placeholders
+        return name, {}, {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Choose the kind of Időkép entry to add."""
         return self.async_show_menu(
-            step_id="user", menu_options=["location", "station"]
+            step_id="user", menu_options=["location", "station", "smog", "pollen"]
         )
 
     async def async_step_location(
@@ -204,24 +176,13 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
         if user_input is not None:
-            (
-                name,
-                errors,
-                placeholders,
-                stations,
-                pollen_location,
-                _,
-            ) = await self._async_check(user_input)
+            name, errors, placeholders = await self._async_check(user_input)
             if name is not None:
                 await self.async_set_unique_id(entry_unique_id(name))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=name,
-                    data={
-                        CONF_LOCATION: name,
-                        CONF_SMOG_STATIONS: stations or [],
-                        CONF_POLLEN_LOCATION: pollen_location,
-                    },
+                    data={CONF_LOCATION: name},
                 )
 
         return self.async_show_form(
@@ -294,13 +255,96 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_smog(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add a separate smog entry for a selected city."""
+        if user_input is None:
+            try:
+                cities = await FetchSmogCities(
+                    async_get_clientsession(self.hass),
+                    await async_request_headers(self.hass),
+                )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                UpdateFailed,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép smog cities: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not cities:
+                return self.async_abort(reason="no_smog_cities")
+            self._available_smog_cities = cities
+            return self.async_show_form(
+                step_id="smog",
+                data_schema=_city_schema(CONF_SMOG_CITY, cities),
+            )
+
+        city = user_input.get(CONF_SMOG_CITY)
+        if not isinstance(city, str) or not city.strip():
+            return self.async_abort(reason="city_not_selected")
+        city = city.strip()
+        if city not in getattr(self, "_available_smog_cities", []):
+            return self.async_abort(reason="city_not_available")
+
+        await self.async_set_unique_id(f"smog-{entry_unique_id(city)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=f"Időkép szmog - {city}",
+            data={CONF_SMOG_CONFIG_ENTRY: True, CONF_SMOG_CITY: city},
+        )
+
+    async def async_step_pollen(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add a separate pollen entry for a selected city."""
+        if user_input is None:
+            try:
+                cities = await FetchPollenCities(
+                    async_get_clientsession(self.hass),
+                    await async_request_headers(self.hass),
+                )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                UpdateFailed,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép pollen cities: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not cities:
+                return self.async_abort(reason="no_pollen_cities")
+            self._available_pollen_cities = cities
+            return self.async_show_form(
+                step_id="pollen",
+                data_schema=_city_schema(CONF_POLLEN_CITY, cities),
+            )
+
+        city = user_input.get(CONF_POLLEN_CITY)
+        if not isinstance(city, str) or not city.strip():
+            return self.async_abort(reason="city_not_selected")
+        city = city.strip()
+        if city not in getattr(self, "_available_pollen_cities", []):
+            return self.async_abort(reason="city_not_available")
+
+        await self.async_set_unique_id(f"pollen-{entry_unique_id(city)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=f"Időkép pollen - {city}",
+            data={CONF_POLLEN_CONFIG_ENTRY: True, CONF_POLLEN_CITY: city},
+        )
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Change the location of an existing entry."""
         entry = self._get_reconfigure_entry()
-        if entry.data.get(CONF_STATION_CONFIG_ENTRY) or entry.data.get(
-            CONF_RADAR_CONFIG_ENTRY
+        if (
+            entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+            or entry.data.get(CONF_STATION_CONFIG_ENTRY)
+            or entry.data.get(CONF_SMOG_CONFIG_ENTRY)
+            or entry.data.get(CONF_POLLEN_CONFIG_ENTRY)
         ):
             return self.async_abort(reason="not_supported")
         old_location: str = entry.data[CONF_LOCATION]
@@ -308,45 +352,18 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         placeholders: dict[str, str] = {}
 
         if user_input is not None:
-            (
-                name,
-                errors,
-                placeholders,
-                stations,
-                pollen_location,
-                pollen_lookup_failed,
-            ) = await self._async_check(user_input)
+            name, errors, placeholders = await self._async_check(user_input)
             if name is not None:
                 new_unique_id = entry_unique_id(name)
                 if new_unique_id != entry.unique_id:
                     await self.async_set_unique_id(new_unique_id)
                     self._abort_if_unique_id_configured()
                 self._move_weather_entity(entry.entry_id, old_location, name)
-                if stations is None:
-                    stations = (
-                        entry.data.get(CONF_SMOG_STATIONS, [])
-                        if new_unique_id == entry.unique_id
-                        else []
-                    )
-                if pollen_lookup_failed and new_unique_id == entry.unique_id:
-                    pollen_location = entry.data.get(CONF_POLLEN_LOCATION)
-                options = entry.options
-                if new_unique_id != entry.unique_id:
-                    options = {
-                        **entry.options,
-                        CONF_SMOG_SENSORS_ENABLED: False,
-                        CONF_POLLEN_SENSORS_ENABLED: False,
-                    }
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=new_unique_id,
                     title=name if entry.title == old_location else entry.title,
-                    data_updates={
-                        CONF_LOCATION: name,
-                        CONF_SMOG_STATIONS: stations,
-                        CONF_POLLEN_LOCATION: pollen_location,
-                    },
-                    options=options,
+                    data_updates={CONF_LOCATION: name},
                 )
 
         return self.async_show_form(
@@ -381,18 +398,15 @@ class IdokepOptionsFlow(OptionsFlow):
         """Choose the forecast length or station refresh interval."""
         if self.config_entry.data.get(CONF_STATION_CONFIG_ENTRY):
             return await self.async_step_station(user_input)
+        if (
+            self.config_entry.data.get(CONF_SMOG_CONFIG_ENTRY)
+            or self.config_entry.data.get(CONF_POLLEN_CONFIG_ENTRY)
+        ):
+            return self.async_abort(reason="sensor_no_options")
         if self.config_entry.data.get(CONF_RADAR_CONFIG_ENTRY):
             return self.async_abort(reason="radar_no_options")
         if user_input is not None:
             options = {CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
-            if self.config_entry.data.get(CONF_SMOG_STATIONS):
-                options[CONF_SMOG_SENSORS_ENABLED] = user_input[
-                    CONF_SMOG_SENSORS_ENABLED
-                ]
-            if self.config_entry.data.get(CONF_POLLEN_LOCATION):
-                options[CONF_POLLEN_SENSORS_ENABLED] = user_input[
-                    CONF_POLLEN_SENSORS_ENABLED
-                ]
             return self.async_create_entry(data=options)
 
         return self.async_show_form(
@@ -443,30 +457,16 @@ class IdokepOptionsFlow(OptionsFlow):
         )
         if user_input is not None:
             current = int(user_input.get(CONF_FORECAST_DAYS, current))
-        options = self.config_entry.options
-        smog_enabled = options.get(CONF_SMOG_SENSORS_ENABLED, False)
-        pollen_enabled = options.get(CONF_POLLEN_SENSORS_ENABLED, False)
-        if user_input is not None:
-            smog_enabled = user_input.get(CONF_SMOG_SENSORS_ENABLED, smog_enabled)
-            pollen_enabled = user_input.get(CONF_POLLEN_SENSORS_ENABLED, pollen_enabled)
-
-        schema = {
-            vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
-                SelectSelector(
-                    SelectSelectorConfig(
-                        options=[str(d) for d in FORECAST_DAYS_CHOICES],
-                        mode=SelectSelectorMode.LIST,
-                        translation_key=CONF_FORECAST_DAYS,
+        return vol.Schema(
+            {
+                vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
+                    SelectSelector(
+                        SelectSelectorConfig(
+                            options=[str(d) for d in FORECAST_DAYS_CHOICES],
+                            mode=SelectSelectorMode.LIST,
+                            translation_key=CONF_FORECAST_DAYS,
+                        )
                     )
-                )
-            ),
-        }
-        if self.config_entry.data.get(CONF_SMOG_STATIONS):
-            schema[vol.Required(CONF_SMOG_SENSORS_ENABLED, default=smog_enabled)] = (
-                BooleanSelector()
-            )
-        if self.config_entry.data.get(CONF_POLLEN_LOCATION):
-            schema[
-                vol.Required(CONF_POLLEN_SENSORS_ENABLED, default=pollen_enabled)
-            ] = BooleanSelector()
-        return vol.Schema(schema)
+                ),
+            }
+        )

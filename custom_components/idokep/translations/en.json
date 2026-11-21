@@ -5,7 +5,9 @@
         "title": "Add an Időkép data source",
         "menu_options": {
           "location": "Weather location",
-          "station": "Map station sensors"
+          "station": "Map station sensors",
+          "smog": "Smog sensors",
+          "pollen": "Pollen sensors"
         }
       },
       "location": {
@@ -26,6 +28,26 @@
         },
         "data_description": {
           "measurement_point": "Use the exact station name or its Időkép identifier."
+        }
+      },
+      "smog": {
+        "title": "Add smog sensors",
+        "description": "Choose a city available on the Időkép smog map. Leave the field empty to cancel.",
+        "data": {
+          "smog_city": "City"
+        },
+        "data_description": {
+          "smog_city": "The selected city's smog stations will be added as sensors."
+        }
+      },
+      "pollen": {
+        "title": "Add pollen sensors",
+        "description": "Choose a city available on the Időkép pollen map. Leave the field empty to cancel.",
+        "data": {
+          "pollen_city": "City"
+        },
+        "data_description": {
+          "pollen_city": "The selected city's pollen levels will be added as sensors."
         }
       },
       "reconfigure": {
@@ -50,7 +72,13 @@
       "already_configured": "This location or station is already added.",
       "reconfigure_successful": "The location was changed.",
       "not_supported": "This configuration is managed automatically.",
-      "radar_no_options": "The global radar entry has no options."
+      "radar_no_options": "The global radar entry has no options.",
+      "sensor_no_options": "This sensor entry has no configurable options.",
+      "map_unavailable": "Could not load the Időkép map. Try again later.",
+      "no_smog_cities": "No cities with smog measurements were found.",
+      "no_pollen_cities": "No cities with pollen measurements were found.",
+      "city_not_selected": "No city was selected, so no sensor entry was added.",
+      "city_not_available": "The selected city is no longer available on the map."
     }
   },
   "entity": {
@@ -148,11 +176,9 @@
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update. Smog and pollen sensors are offered only when matching data is found for the location. Add map stations as separate Időkép entries.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Add map stations, smog sensors and pollen sensors as separate Időkép entries.",
         "data": {
-          "forecast_days": "Daily forecast",
-          "smog_sensors_enabled": "Enable smog sensors",
-          "pollen_sensors_enabled": "Enable pollen sensors"
+          "forecast_days": "Daily forecast"
         }
       },
       "station": {
@@ -169,18 +195,6 @@
       "options": {
         "15": "15 days",
         "30": "30 days"
-      }
-    },
-    "smog_sensors_enabled": {
-      "options": {
-        "true": "Enabled",
-        "false": "Disabled"
-      }
-    },
-    "pollen_sensors_enabled": {
-      "options": {
-        "true": "Enabled",
-        "false": "Disabled"
       }
     },
     "station_update_interval": {

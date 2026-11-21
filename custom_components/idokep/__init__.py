@@ -13,7 +13,9 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_LOCATION,
+    CONF_POLLEN_CONFIG_ENTRY,
     CONF_RADAR_CONFIG_ENTRY,
+    CONF_SMOG_CONFIG_ENTRY,
     CONF_STATION_CONFIG_ENTRY,
     CONFIG_FLOW_VERSION,
     DOMAIN,
@@ -21,13 +23,20 @@ from .const import (
     LEGACY_DEFAULT_TITLE,
     LEGACY_UNIQUE_ID,
     PLATFORMS,
+    POLLEN_PLATFORMS,
     RADAR_CONFIG_ENTRY_UNIQUE_ID,
     RADAR_PLATFORMS,
+    SMOG_PLATFORMS,
     STATION_PLATFORMS,
     entry_unique_id,
     weather_unique_id,
 )
-from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
+from .coordinator import (
+    PollenUpdateCoordinator,
+    SmogUpdateCoordinator,
+    StationUpdateCoordinator,
+    WeatherUpdateCoordinator,
+)
 from .radar import RadarUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,11 +63,44 @@ class IdokepRadarData:
     coordinator: RadarUpdateCoordinator
 
 
-type IdokepConfigEntry = ConfigEntry[IdokepData | IdokepStationData | IdokepRadarData]
+@dataclass
+class IdokepSmogData:
+    """Runtime data for one smog city config entry."""
+
+    coordinator: SmogUpdateCoordinator
+
+
+@dataclass
+class IdokepPollenData:
+    """Runtime data for one pollen city config entry."""
+
+    coordinator: PollenUpdateCoordinator
+
+type IdokepConfigEntry = ConfigEntry[
+    IdokepData
+    | IdokepStationData
+    | IdokepRadarData
+    | IdokepSmogData
+    | IdokepPollenData
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Set up one Időkép location."""
+    if entry.data.get(CONF_SMOG_CONFIG_ENTRY):
+        coordinator = SmogUpdateCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = IdokepSmogData(coordinator)
+        await hass.config_entries.async_forward_entry_setups(entry, SMOG_PLATFORMS)
+        return True
+
+    if entry.data.get(CONF_POLLEN_CONFIG_ENTRY):
+        coordinator = PollenUpdateCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = IdokepPollenData(coordinator)
+        await hass.config_entries.async_forward_entry_setups(entry, POLLEN_PLATFORMS)
+        return True
+
     if entry.data.get(CONF_STATION_CONFIG_ENTRY):
         coordinator = StationUpdateCoordinator(hass, entry)
         await coordinator.async_config_entry_first_refresh()
@@ -116,7 +158,11 @@ async def _async_reload_on_change(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Unload a config entry."""
-    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+    if entry.data.get(CONF_SMOG_CONFIG_ENTRY):
+        platforms = SMOG_PLATFORMS
+    elif entry.data.get(CONF_POLLEN_CONFIG_ENTRY):
+        platforms = POLLEN_PLATFORMS
+    elif entry.data.get(CONF_STATION_CONFIG_ENTRY):
         platforms = STATION_PLATFORMS
     elif entry.data.get(CONF_RADAR_CONFIG_ENTRY):
         platforms = RADAR_PLATFORMS

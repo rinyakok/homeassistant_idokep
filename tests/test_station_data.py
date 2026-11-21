@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 
 from custom_components.idokep.coordinator import (
+    FetchPollenCities,
     FetchPollenData,
     FetchPollenLocation,
+    FetchSmogCities,
+    FetchSmogCityData,
     FetchSmogData,
     FetchSmogStations,
     FetchStationWeatherData,
@@ -131,6 +134,17 @@ async def test_smog_data_is_deduplicated_and_contains_measurements() -> None:
     assert data["bud-1"]["pm25"] is None
 
 
+async def test_smog_cities_are_sorted_and_city_data_is_filtered() -> None:
+    """The city selector lists available cities and fetches only the selected one."""
+    session = FakeClientSession({"/szmog": _smog_page()})
+
+    cities = await FetchSmogCities(session)
+    data = await FetchSmogCityData(session, "Érd")
+
+    assert cities == ["Budapest", "Érd"]
+    assert list(data) == ["erd-1"]
+
+
 def _pollen_page() -> str:
     """Return image-map tooltips for one data location and one empty location."""
     return (
@@ -166,3 +180,10 @@ async def test_pollen_data_returns_only_qualitative_levels() -> None:
     data = await FetchPollenData(session, "Érd")
 
     assert data == {"grass": "alacsony", "ragweed": "nincs"}
+
+
+async def test_pollen_cities_exclude_locations_without_values() -> None:
+    """Only cities with current pollen readings can be selected."""
+    session = FakeClientSession({"/pollen": _pollen_page()})
+
+    assert await FetchPollenCities(session) == ["Érd"]

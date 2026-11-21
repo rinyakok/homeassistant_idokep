@@ -5,7 +5,9 @@
         "title": "Időkép adatforrás hozzáadása",
         "menu_options": {
           "location": "Időjárási helyszín",
-          "station": "Térképes állomásszenzorok"
+          "station": "Térképes állomásszenzorok",
+          "smog": "Szmogszenzorok",
+          "pollen": "Pollenszenzorok"
         }
       },
       "location": {
@@ -18,16 +20,6 @@
           "location": "Település neve. Az ékezet elhagyható: az \"erd\" is Érdet jelenti."
         }
       },
-      "reconfigure": {
-        "title": "Helyszín módosítása",
-        "description": "Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.",
-        "data": {
-          "location": "Helyszín"
-        },
-        "data_description": {
-          "location": "Település neve, ahogy az idokep.hu-n szerepel."
-        }
-      },
       "station": {
         "title": "Térképes állomás hozzáadása",
         "description": "Add meg az állomás nevét vagy Időkép-azonosítóját. Minden állomás külön eszközként jelenik meg.",
@@ -36,6 +28,36 @@
         },
         "data_description": {
           "measurement_point": "Az állomás pontos nevét vagy Időkép-azonosítóját add meg."
+        }
+      },
+      "smog": {
+        "title": "Szmogszenzorok hozzáadása",
+        "description": "Válassz egy települést az Időkép szmogtérképén elérhetők közül. Üres mező esetén a hozzáadás megszakad.",
+        "data": {
+          "smog_city": "Település"
+        },
+        "data_description": {
+          "smog_city": "A kiválasztott település mérőállomásai külön szenzorokként jelennek meg."
+        }
+      },
+      "pollen": {
+        "title": "Pollenszenzorok hozzáadása",
+        "description": "Válassz egy települést az Időkép pollentérképén elérhetők közül. Üres mező esetén a hozzáadás megszakad.",
+        "data": {
+          "pollen_city": "Település"
+        },
+        "data_description": {
+          "pollen_city": "A kiválasztott település pollenszintjei külön szenzorokként jelennek meg."
+        }
+      },
+      "reconfigure": {
+        "title": "Helyszín módosítása",
+        "description": "Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.",
+        "data": {
+          "location": "Helyszín"
+        },
+        "data_description": {
+          "location": "Település neve, ahogy az idokep.hu-n szerepel."
         }
       }
     },
@@ -50,7 +72,13 @@
       "already_configured": "Ez a helyszín vagy állomás már hozzá van adva.",
       "reconfigure_successful": "A helyszín módosult.",
       "not_supported": "Ezt a beállítást az integráció automatikusan kezeli.",
-      "radar_no_options": "A globális radarbejegyzéshez nincs további beállítás."
+      "radar_no_options": "A globális radarbejegyzéshez nincs további beállítás.",
+      "sensor_no_options": "Ehhez a szenzorbejegyzéshez nincs beállítható opció.",
+      "map_unavailable": "Nem sikerült betölteni az Időkép térképét. Próbáld újra később.",
+      "no_smog_cities": "Nem található mérési adattal rendelkező település a szmogtérképen.",
+      "no_pollen_cities": "Nem található mérési adattal rendelkező település a pollentérképen.",
+      "city_not_selected": "Nem választottál települést, ezért nem jött létre szenzorbejegyzés.",
+      "city_not_available": "A kiválasztott település már nem érhető el a térképen."
     }
   },
   "entity": {
@@ -148,11 +176,9 @@
     "step": {
       "init": {
         "title": "Időkép beállítások",
-        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. A szmog- és pollenszenzorok kapcsolója csak akkor jelenik meg, ha a településhez található adat a megfelelő térképen. A térképes állomásokat külön Időkép-bejegyzésként add hozzá.",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. A térképes állomásokat, a szmog- és a pollenszenzorokat külön Időkép-bejegyzésként add hozzá.",
         "data": {
-          "forecast_days": "Napi előrejelzés",
-          "smog_sensors_enabled": "Szmogszenzorok bekapcsolása",
-          "pollen_sensors_enabled": "Pollenszenzorok bekapcsolása"
+          "forecast_days": "Napi előrejelzés"
         }
       },
       "station": {
@@ -169,18 +195,6 @@
       "options": {
         "15": "15 nap",
         "30": "30 nap"
-      }
-    },
-    "smog_sensors_enabled": {
-      "options": {
-        "true": "Bekapcsolva",
-        "false": "Kikapcsolva"
-      }
-    },
-    "pollen_sensors_enabled": {
-      "options": {
-        "true": "Bekapcsolva",
-        "false": "Kikapcsolva"
       }
     },
     "station_update_interval": {

@@ -20,7 +20,13 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import IdokepConfigEntry, IdokepData, IdokepStationData
+from . import (
+    IdokepConfigEntry,
+    IdokepData,
+    IdokepPollenData,
+    IdokepSmogData,
+    IdokepStationData,
+)
 from .const import (
     ATTR_API_CONDITION,
     ATTR_API_CONDITION_HU,
@@ -35,15 +41,23 @@ from .const import (
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     ATTRIBUTION,
-    CONF_POLLEN_LOCATION,
-    CONF_POLLEN_SENSORS_ENABLED,
-    CONF_SMOG_SENSORS_ENABLED,
-    CONF_SMOG_STATIONS,
+    CONF_POLLEN_CONFIG_ENTRY,
+    CONF_SMOG_CONFIG_ENTRY,
     CONF_STATION_CONFIG_ENTRY,
     POLLEN_CATEGORIES,
 )
-from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
-from .entity import idokep_device_info, idokep_station_device_info
+from .coordinator import (
+    PollenUpdateCoordinator,
+    SmogUpdateCoordinator,
+    StationUpdateCoordinator,
+    WeatherUpdateCoordinator,
+)
+from .entity import (
+    idokep_device_info,
+    idokep_pollen_device_info,
+    idokep_smog_device_info,
+    idokep_station_device_info,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -215,24 +229,36 @@ async def async_setup_entry(
         )
         return
 
+    if entry.data.get(CONF_SMOG_CONFIG_ENTRY):
+        runtime_data = entry.runtime_data
+        if not isinstance(runtime_data, IdokepSmogData):
+            raise RuntimeError("Smog config entry has invalid runtime data")
+        coordinator = runtime_data.coordinator
+        entities = []
+        for station in coordinator.data[ATTR_API_SMOG_SENSORS].values():
+            entities.append(IdokepSmogSensor(coordinator, station, "pm10"))
+            if station.get("pm25") is not None:
+                entities.append(IdokepSmogSensor(coordinator, station, "pm25"))
+        async_add_entities(entities)
+        return
+
+    if entry.data.get(CONF_POLLEN_CONFIG_ENTRY):
+        runtime_data = entry.runtime_data
+        if not isinstance(runtime_data, IdokepPollenData):
+            raise RuntimeError("Pollen config entry has invalid runtime data")
+        async_add_entities(
+            IdokepPollenSensor(runtime_data.coordinator, description)
+            for description in POLLEN_SENSOR_TYPES
+        )
+        return
+
     runtime_data = entry.runtime_data
     if not isinstance(runtime_data, IdokepData):
         raise RuntimeError("Weather config entry has invalid runtime data")
     coordinator = runtime_data.coordinator
-    descriptions = SENSOR_TYPES
-    if entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False) and entry.data.get(
-        CONF_POLLEN_LOCATION
-    ):
-        descriptions += POLLEN_SENSOR_TYPES
-    entities: list[SensorEntity] = [
-        IdokepSensor(coordinator, description) for description in descriptions
-    ]
-    if entry.options.get(CONF_SMOG_SENSORS_ENABLED, False):
-        for station in entry.data.get(CONF_SMOG_STATIONS, []):
-            entities.append(IdokepSmogSensor(coordinator, station, "pm10"))
-            if station.get("has_pm25"):
-                entities.append(IdokepSmogSensor(coordinator, station, "pm25"))
-    async_add_entities(entities)
+    async_add_entities(
+        IdokepSensor(coordinator, description) for description in SENSOR_TYPES
+    )
 
 
 class IdokepStationSensor(CoordinatorEntity[StationUpdateCoordinator], SensorEntity):
@@ -298,7 +324,38 @@ class IdokepSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
         return self.entity_description.attributes_fn(self.coordinator.data)
 
 
-class IdokepSmogSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity):
+class IdokepPollenSensor(CoordinatorEntity[PollenUpdateCoordinator], SensorEntity):
+    """A pollen level from one independently configured city."""
+
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+    entity_description: IdokepSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: PollenUpdateCoordinator,
+        description: IdokepSensorEntityDescription,
+    ) -> None:
+        """Initialize the pollen sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
+        self._attr_device_info = idokep_pollen_device_info(coordinator.config_entry)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the latest pollen level."""
+        return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return pollen metadata."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data)
+
+
+class IdokepSmogSensor(CoordinatorEntity[SmogUpdateCoordinator], SensorEntity):
     """A PM10 or PM2.5 measurement from one smog-map station."""
 
     _attr_attribution = ATTRIBUTION
@@ -308,7 +365,7 @@ class IdokepSmogSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity
 
     def __init__(
         self,
-        coordinator: WeatherUpdateCoordinator,
+        coordinator: SmogUpdateCoordinator,
         station: dict[str, Any],
         pollutant: str,
     ) -> None:
@@ -322,7 +379,7 @@ class IdokepSmogSensor(CoordinatorEntity[WeatherUpdateCoordinator], SensorEntity
         )
         pollutant_name = "PM10" if pollutant == "pm10" else "PM2.5"
         self._attr_name = f"{station['name']} {pollutant_name}"
-        self._attr_device_info = idokep_device_info(coordinator.config_entry)
+        self._attr_device_info = idokep_smog_device_info(coordinator.config_entry)
 
     @property
     def native_value(self) -> StateType:
