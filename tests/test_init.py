@@ -718,12 +718,12 @@ async def test_station_entries_create_separate_station_devices(
     )
     assert not any("/terkep/" in url for url in fake_idokep.requested)
 
-    erd_result = await _start_station_flow(hass, "station-7")
+    erd_result = await _start_station_flow(hass, "Érd (station-7)")
     assert erd_result["type"] is FlowResultType.CREATE_ENTRY
     erd_entry = erd_result["result"]
     await hass.async_block_till_done()
 
-    gyor_result = await _start_station_flow(hass, "Győr")
+    gyor_result = await _start_station_flow(hass, "Győr (station-8)")
     assert gyor_result["type"] is FlowResultType.CREATE_ENTRY
     gyor_entry = gyor_result["result"]
     await hass.async_block_till_done()
@@ -737,7 +737,7 @@ async def test_station_entries_create_separate_station_devices(
         minutes=20
     )
 
-    duplicate = await _start_station_flow(hass, "Érd")
+    duplicate = await _start_station_flow(hass, "Érd (station-7)")
     assert duplicate["type"] is FlowResultType.ABORT
     assert duplicate["reason"] == "already_configured"
 
@@ -785,7 +785,9 @@ async def test_station_flow_selects_an_available_station(
 async def test_station_flow_rejects_an_unavailable_selection(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """The flow does not accept a station ID outside its dropdown options."""
+    """The dropdown schema rejects a station outside its options."""
+    import voluptuous as vol
+
     fake_idokep.pages.update(_station_map_pages())
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -795,9 +797,5 @@ async def test_station_flow_rejects_an_unavailable_selection(
     )
     assert result["type"] is FlowResultType.FORM
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_MEASUREMENT_POINT: "missing-station"}
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "station_not_available"
+    with pytest.raises(vol.Invalid):
+        result["data_schema"]({CONF_MEASUREMENT_POINT: "missing-station"})
