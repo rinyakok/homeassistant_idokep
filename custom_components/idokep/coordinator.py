@@ -71,6 +71,7 @@ BUDAPEST_TZ_NAME = "Europe/Budapest"
 
 # Exceptions that mean "this part of the page is missing or has changed".
 PARSE_ERRORS = (AttributeError, IndexError, KeyError, TypeError, ValueError)
+TIMESTAMP_CONVERSION_ERRORS = (OverflowError, OSError, ValueError)
 
 weather_conditions = {
     "napos": "sunny",
@@ -779,7 +780,7 @@ def _station_observation(
         return None
     try:
         measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
-    except OverflowError, OSError, ValueError:
+    except TIMESTAMP_CONVERSION_ERRORS:
         return None
     observation = {
         "value": value,
@@ -870,7 +871,7 @@ def parse_smog_stations(soup: BeautifulSoup) -> list[dict[str, Any]]:
                 continue
             try:
                 measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
-            except OverflowError, OSError, ValueError:
+            except TIMESTAMP_CONVERSION_ERRORS:
                 continue
             if timestamp <= timestamps.get(station_id, -1):
                 continue
