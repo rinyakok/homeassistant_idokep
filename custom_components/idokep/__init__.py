@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
@@ -24,7 +23,6 @@ from .const import (
     LEGACY_UNIQUE_ID,
     PLATFORMS,
     POLLEN_PLATFORMS,
-    RADAR_CONFIG_ENTRY_UNIQUE_ID,
     RADAR_PLATFORMS,
     SMOG_PLATFORMS,
     STATION_PLATFORMS,
@@ -142,22 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bo
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_change))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    hass.async_create_task(_async_ensure_radar_entry(hass))
     return True
-
-
-async def _async_ensure_radar_entry(hass: HomeAssistant) -> None:
-    """Create the single global radar entry alongside the first location."""
-    if any(
-        entry.unique_id == RADAR_CONFIG_ENTRY_UNIQUE_ID
-        for entry in hass.config_entries.async_entries(DOMAIN)
-    ):
-        return
-    await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_IMPORT},
-        data={CONF_RADAR_CONFIG_ENTRY: True},
-    )
 
 
 def get_radar_coordinator(

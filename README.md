@@ -34,7 +34,7 @@
 | 📍 **Map station sensors** | Add any number of stations as separate entries/devices; each has temperature, 24-hour precipitation, wind speed and gust sensors |
 | 🌫️ **Smog sensors** | Add a separate entry and select an available city; its PM10 and PM2.5 station readings appear as sensors |
 | 🌱 **Pollen sensors** | Add a separate entry and select an available city; qualitative pollen levels appear as sensors |
-| 🌧️ **Radar image and stream** | One global latest radar image and a camera stream cycling through images retained for up to one hour |
+| 🌧️ **Radar image and stream** | Add one separate global entry for the latest radar image and a camera stream cycling through images retained for up to one hour |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
 | ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
 | 📍 **Many places** | Any number of places, one device per place |
@@ -69,7 +69,7 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 - Each station entry has its own update interval, configurable from 5 minutes to 1 hour in 5-minute steps (default: 20 minutes).
 - Existing location entries that used map station sensors need the station added again as a separate entry; the old location-level station sensors are no longer created.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
-- 🌧️ The first place automatically creates one separate **Időkép radar** entry with a latest-image entity and a camera stream. The image history fills gradually after startup.
+- 🌧️ Add **Időkép radar** separately from the integration menu (**Radar image and stream**). Only one global radar entry can be added; it provides the latest-image entity and camera stream. The image history fills gradually after startup.
 
 ### 🧩 Entities (for a place called Érd)
 
@@ -147,7 +147,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 | 📍 **Térképes állomásszenzorok** | Tetszőleges számú, külön bejegyzésként és eszközként felvett állomás hőmérséklet-, 24 órás csapadék-, szélsebesség- és széllökésadatai |
 | 🌫️ **Szmogszenzorok** | Külön bejegyzésként vehetők fel; a térképen elérhető település kiválasztása után annak mérőállomásai PM10- és PM2.5-szenzorokat adnak |
 | 🌱 **Pollenszenzorok** | Külön bejegyzésként vehetők fel; a térképen elérhető település kiválasztása után annak pollenszintjei szenzorokként jelennek meg |
-| 🌧️ **Radarkép és képsorozat** | Egy globális legfrissebb radarkép és egy kamerastream, amely legfeljebb az elmúlt egy óra képeit játssza le |
+| 🌧️ **Radarkép és képsorozat** | Egy külön bejegyzésként felvehető globális legfrissebb radarkép és kamerastream, amely legfeljebb az elmúlt egy óra képeit játssza le |
 | ⚠️ **Riasztások** | Bármilyen riasztás, valamint sárga, narancs és piros riasztás szenzor, részletekkel |
 | ⛈️ **Zivatar** | Zivatar az aktuális vagy a következő órában |
 | 🔌 **Kapcsolat** | Jelzi, ha az idokep.hu nem érhető el |
@@ -199,7 +199,7 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 - Minden állomásbejegyzésnél külön állítható a frissítési időköz 5 perc és 1 óra között, 5 perces lépésekben (alapértelmezés: 20 perc).
 - Ha korábban a helyszín beállításainál térképes állomásszenzorokat használtál, az állomást külön bejegyzésként újra fel kell venni; a régi helyszínszintű szenzorok már nem jönnek létre.
 - ✏️ **Helyszín módosítása:** az integráció bejegyzésénél válaszd az **Újrakonfigurálás** pontot. Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.
-- 🌧️ Az első helyszín hozzáadásakor automatikusan létrejön egy külön **Időkép radar** bejegyzés a legfrissebb kép és a képsorozat entitásával. A képtörténet újraindítás után fokozatosan, legfeljebb egy óra alatt telik fel.
+- 🌧️ Az **Időkép radar** külön vehető fel az integráció hozzáadási menüjéből (**Radarkép és -stream**). Csak egy globális radarbejegyzés adható hozzá; ez tartalmazza a legfrissebb képet és a kamerastreamet. A képtörténet újraindítás után fokozatosan, legfeljebb egy óra alatt telik fel.
 
 <a id="entitasok"></a>
 
