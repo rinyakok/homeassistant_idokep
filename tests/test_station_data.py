@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from custom_components.idokep.coordinator import (
@@ -14,6 +15,7 @@ from custom_components.idokep.coordinator import (
     FetchSmogStations,
     FetchStationChoices,
     FetchStationWeatherData,
+    MapDataCache,
 )
 
 from .conftest import FakeClientSession
@@ -70,6 +72,38 @@ async def test_station_data_matches_identifier() -> None:
     assert data["wind_speed"]["wind_direction_degrees"] == 180
     assert data["wind_gust"]["value"] == 6
     assert data["wind_gust"]["measured_at"] == "2026-11-20T18:22:01+00:00"
+
+
+async def test_station_map_data_is_shared_between_measurement_points() -> None:
+    """Each station-map source is downloaded once for multiple points."""
+    session = _session()
+    cache = MapDataCache()
+
+    by_id = await FetchStationWeatherData(session, "station-7", map_data_cache=cache)
+    by_name = await FetchStationWeatherData(session, "Érd", map_data_cache=cache)
+
+    assert by_id == by_name
+    assert len(session.requested) == 3
+
+
+async def test_map_cache_coalesces_concurrent_fetches() -> None:
+    """Concurrent callers share one successful fetch."""
+    cache = MapDataCache()
+    fetch_count = 0
+
+    async def fetch() -> list[str]:
+        nonlocal fetch_count
+        fetch_count += 1
+        await asyncio.sleep(0)
+        return ["map data"]
+
+    first, second = await asyncio.gather(
+        cache.async_get("map", fetch),
+        cache.async_get("map", fetch),
+    )
+
+    assert fetch_count == 1
+    assert first is second
 
 
 async def test_station_data_matches_accentless_name() -> None:
@@ -153,6 +187,19 @@ async def test_smog_cities_are_sorted_and_city_data_is_filtered() -> None:
     assert list(data) == ["erd-1"]
 
 
+async def test_smog_map_data_is_shared_between_cities() -> None:
+    """Smog city entries reuse the parsed station map."""
+    session = FakeClientSession({"/szmog": _smog_page()})
+    cache = MapDataCache()
+
+    erd = await FetchSmogCityData(session, "Érd", map_data_cache=cache)
+    budapest = await FetchSmogCityData(session, "Budapest", map_data_cache=cache)
+
+    assert list(erd) == ["erd-1"]
+    assert list(budapest) == ["bud-1"]
+    assert len(session.requested) == 1
+
+
 def _pollen_page() -> str:
     """Return image-map tooltips for one data location and one empty location."""
     return (
@@ -188,6 +235,19 @@ async def test_pollen_data_returns_only_qualitative_levels() -> None:
     data = await FetchPollenData(session, "Érd")
 
     assert data == {"grass": "alacsony", "ragweed": "nincs"}
+
+
+async def test_pollen_map_data_is_shared_between_cities() -> None:
+    """Pollen city entries reuse the parsed location map."""
+    session = FakeClientSession({"/pollen": _pollen_page()})
+    cache = MapDataCache()
+
+    erd = await FetchPollenData(session, "Érd", map_data_cache=cache)
+    szekszard = await FetchPollenData(session, "Szekszárd", map_data_cache=cache)
+
+    assert erd == {"grass": "alacsony", "ragweed": "nincs"}
+    assert szekszard == {}
+    assert len(session.requested) == 1
 
 
 async def test_pollen_cities_exclude_locations_without_values() -> None:

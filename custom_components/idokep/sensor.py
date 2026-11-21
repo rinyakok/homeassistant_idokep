@@ -354,7 +354,7 @@ class IdokepSmogSensor(CoordinatorEntity[SmogUpdateCoordinator], SensorEntity):
 
     def __init__(
         self,
-        coordinator: WeatherUpdateCoordinator,
+        coordinator: SmogUpdateCoordinator,
         station: dict[str, Any],
         pollutant: str,
     ) -> None:
