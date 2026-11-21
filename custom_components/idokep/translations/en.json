@@ -22,12 +22,12 @@
       },
       "station": {
         "title": "Add a map station",
-        "description": "Enter the station name or Időkép station ID. Each station is added as a separate device.",
+        "description": "Choose an available station from the dropdown. Each station is added as a separate device.",
         "data": {
-          "measurement_point": "Station name or ID"
+          "measurement_point": "Station"
         },
         "data_description": {
-          "measurement_point": "Use the exact station name or its Időkép identifier."
+          "measurement_point": "The list is populated from the available Időkép map stations."
         }
       },
       "smog": {
@@ -65,8 +65,7 @@
       "cannot_connect": "Could not connect to idokep.hu. Try again later.",
       "location_not_found": "No weather data found on idokep.hu for this location.",
       "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling.",
-      "station_not_found": "No map measurements found for this station. Check the station name or ID.",
-      "station_required": "Enter a station name or ID."
+      "station_required": "Select a station from the list."
     },
     "abort": {
       "already_configured": "This location or station is already added.",
@@ -78,7 +77,9 @@
       "no_smog_cities": "No cities with smog measurements were found.",
       "no_pollen_cities": "No cities with pollen measurements were found.",
       "city_not_selected": "No city was selected, so no sensor entry was added.",
-      "city_not_available": "The selected city is no longer available on the map."
+      "city_not_available": "The selected city is no longer available on the map.",
+      "no_stations": "No stations were found on the Időkép maps.",
+      "station_not_available": "The selected station is no longer available on the maps."
     }
   },
   "entity": {

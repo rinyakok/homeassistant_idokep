@@ -62,7 +62,7 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 
 1. **Settings → Devices & services → Add integration → Időkép**.
 2. Choose **Weather location** and type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
-3. To add map measurements, add Időkép again, choose **Map station sensors**, and enter the station name or ID. Repeat to add more stations.
+3. To add map measurements, add Időkép again, choose **Map station sensors**, and select an available station from the dropdown. Repeat to add more stations.
 4. To add smog or pollen readings, add Időkép again, choose **Smog sensors** or **Pollen sensors**, then select a city from the map's available cities. Leaving the city empty cancels the setup.
 
 - 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days.
@@ -107,7 +107,7 @@ Both use the `idokep` domain, so only one can be installed.
 
 ### 🚧 Limits
 
-idokep.hu has no public API. Weather, smog and pollen data are read every 20 minutes; each map station has an independent, configurable 5-minute-to-1-hour update interval. A change on the website can break parts of the integration. Add map stations as separate entries using their name or ID. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
+idokep.hu has no public API. Weather, smog and pollen data are read every 20 minutes; each map station has an independent, configurable 5-minute-to-1-hour update interval. A change on the website can break parts of the integration. Add map stations as separate entries by selecting them from the available-stations dropdown. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
 
 ---
 
@@ -186,7 +186,7 @@ Másold a `custom_components/idokep` mappát a Home Assistant `<config>/custom_c
 
 1. **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása**, majd válaszd az **Időkép**-et.
 2. Válaszd az **Időjárási helyszín** lehetőséget, majd add meg a település nevét úgy, ahogy az idokep.hu-n szerepel. Például **Pécs** (`https://www.idokep.hu/idojaras/Pécs`).
-3. További településekhez ismételd meg. Térképes állomásszenzorokhoz újra add hozzá az Időképet, válaszd a **Térképes állomásszenzorok** lehetőséget, majd add meg az állomás nevét vagy azonosítóját. Több állomás is felvehető.
+3. További településekhez ismételd meg. Térképes állomásszenzorokhoz újra add hozzá az Időképet, válaszd a **Térképes állomásszenzorok** lehetőséget, majd válassz egy állomást az elérhetőket felsoroló legördülő listából. Több állomás is felvehető.
 4. Szmog- vagy pollenszenzorokhoz újra add hozzá az Időképet, válaszd a **Szmogszenzorok** vagy **Pollenszenzorok** lehetőséget, majd válassz egy települést a térképen elérhetők közül. Üres választásnál a beállítás megszakad.
 
 > [!TIP]

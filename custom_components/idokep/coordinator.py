@@ -833,6 +833,62 @@ async def _fetch_station_precipitation(
     return rows
 
 
+async def FetchStationChoices(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[dict[str, str]]:
+    """List unique stations available across the measurement maps."""
+    sources = (
+        (
+            "temperature",
+            _fetch_station_temperature(session, request_headers),
+            4,
+            6,
+        ),
+        ("wind", _fetch_station_wind(session, request_headers), 6, 8),
+        (
+            "precipitation",
+            _fetch_station_precipitation(session, request_headers),
+            4,
+            5,
+        ),
+    )
+    errors: list[Exception] = []
+
+    async def fetch_source(source: str, request: Any) -> list[list[Any]] | None:
+        try:
+            return await request
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            _LOGGER.warning("Unable to fetch Időkép %s station list: %s", source, err)
+            errors.append(err)
+            return None
+
+    results = await asyncio.gather(
+        *(fetch_source(source, request) for source, request, _, _ in sources)
+    )
+    if all(rows is None for rows in results):
+        raise StationDataError("Unable to load any map station list") from errors[0]
+
+    stations: dict[str, dict[str, str]] = {}
+    for (_, _, name_index, id_index), rows in zip(sources, results, strict=True):
+        if rows is None:
+            continue
+        for row in rows:
+            if not isinstance(row, list) or len(row) <= max(name_index, id_index):
+                continue
+            name, station_id = row[name_index], row[id_index]
+            if not isinstance(name, str) or not isinstance(station_id, str):
+                continue
+            name, station_id = name.strip(), station_id.strip()
+            if name and station_id:
+                stations.setdefault(station_id, {"id": station_id, "name": name})
+
+    return sorted(
+        stations.values(),
+        key=lambda station: (station["name"].casefold(), station["id"].casefold()),
+    )
+
+
 def _location_match_key(value: str) -> str:
     """Normalize capitalization while keeping accents significant."""
     return unicodedata.normalize("NFC", value.strip()).casefold()
