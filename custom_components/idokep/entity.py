@@ -14,6 +14,7 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
     NAME,
+    RADAR_CONFIG_ENTRY_TITLE,
 )
 
 
@@ -37,4 +38,15 @@ def idokep_station_device_info(entry: ConfigEntry) -> DeviceInfo:
         manufacturer=MANUFACTURER,
         entry_type=DeviceEntryType.SERVICE,
         configuration_url=f"{BASE_IDOKEP_URL}/szel",
+    )
+
+
+def radar_device_info() -> DeviceInfo:
+    """Return the global Időkép radar device."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, "radar")},
+        name=RADAR_CONFIG_ENTRY_TITLE,
+        manufacturer=MANUFACTURER,
+        entry_type=DeviceEntryType.SERVICE,
+        configuration_url=f"{BASE_IDOKEP_URL}/radar",
     )

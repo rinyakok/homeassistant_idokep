@@ -33,6 +33,7 @@ from .const import (
     CONF_MEASUREMENT_POINT,
     CONF_POLLEN_LOCATION,
     CONF_POLLEN_SENSORS_ENABLED,
+    CONF_RADAR_CONFIG_ENTRY,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
     CONF_STATION_CONFIG_ENTRY,
@@ -43,6 +44,8 @@ from .const import (
     DEFAULT_STATION_UPDATE_INTERVAL,
     DOMAIN,
     FORECAST_DAYS_CHOICES,
+    RADAR_CONFIG_ENTRY_TITLE,
+    RADAR_CONFIG_ENTRY_UNIQUE_ID,
     STATION_UPDATE_INTERVAL_CHOICES,
     entry_unique_id,
     station_entry_unique_id,
@@ -113,6 +116,17 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Idokep: one entry per location."""
 
     VERSION = CONFIG_FLOW_VERSION
+
+    async def async_step_import(self, user_input: dict[str, Any]) -> FlowResult:
+        """Create the integration's single global radar entry."""
+        if not user_input.get(CONF_RADAR_CONFIG_ENTRY):
+            return self.async_abort(reason="not_supported")
+        await self.async_set_unique_id(RADAR_CONFIG_ENTRY_UNIQUE_ID)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=RADAR_CONFIG_ENTRY_TITLE,
+            data={CONF_RADAR_CONFIG_ENTRY: True},
+        )
 
     @staticmethod
     @callback
@@ -285,6 +299,8 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Change the location of an existing entry."""
         entry = self._get_reconfigure_entry()
+        if entry.data.get(CONF_RADAR_CONFIG_ENTRY):
+            return self.async_abort(reason="not_supported")
         old_location: str = entry.data[CONF_LOCATION]
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
@@ -367,6 +383,8 @@ class IdokepOptionsFlow(OptionsFlow):
         """Choose the forecast length and optional smog and pollen sensors."""
         if self._config_entry.data.get(CONF_STATION_CONFIG_ENTRY):
             return await self.async_step_station(user_input)
+        if self._config_entry.data.get(CONF_RADAR_CONFIG_ENTRY):
+            return self.async_abort(reason="radar_no_options")
         if user_input is not None:
             options = {CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
             if self._config_entry.data.get(CONF_SMOG_STATIONS):

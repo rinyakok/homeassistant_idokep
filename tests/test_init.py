@@ -15,11 +15,17 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.idokep import DATA_RUNTIME, get_entry_data, get_station_data
+from custom_components.idokep import (
+    DATA_RADAR,
+    DATA_RUNTIME,
+    get_entry_data,
+    get_station_data,
+)
 from custom_components.idokep.const import (
     CONF_FORECAST_DAYS,
     CONF_POLLEN_LOCATION,
     CONF_POLLEN_SENSORS_ENABLED,
+    CONF_RADAR_CONFIG_ENTRY,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
     CONF_STATION_UPDATE_INTERVAL,
@@ -115,6 +121,30 @@ async def _setup(hass: HomeAssistant, entry: MockConfigEntry | None = None):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     return entry
+
+
+async def test_radar_entities_are_created_globally_once(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Multiple location entries share one radar image and camera."""
+    await _setup(hass)
+    await _setup(hass, _entry("Győr", "gyor"))
+
+    radar_entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+    ]
+    assert len(radar_entries) == 1
+    radar_entry = radar_entries[0]
+    assert radar_entry.unique_id == "idokep-radar"
+    assert radar_entry.state is ConfigEntryState.LOADED
+    assert len(hass.data[DATA_RADAR][radar_entry.entry_id].data) == 1
+
+    registry = er.async_get(hass)
+    entities = er.async_entries_for_config_entry(registry, radar_entry.entry_id)
+    assert {entity.domain for entity in entities} == {"camera", "image"}
+    assert len(entities) == 2
 
 
 async def _start_user_flow(hass: HomeAssistant, location: str):

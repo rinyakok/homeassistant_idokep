@@ -33,6 +33,11 @@ CONF_SMOG_SENSORS_ENABLED = "smog_sensors_enabled"
 CONF_SMOG_STATIONS = "smog_stations"
 CONF_POLLEN_SENSORS_ENABLED = "pollen_sensors_enabled"
 CONF_POLLEN_LOCATION = "pollen_location"
+CONF_RADAR_CONFIG_ENTRY = "radar_config_entry"
+RADAR_CONFIG_ENTRY_TITLE = "Időkép radar"
+RADAR_CONFIG_ENTRY_UNIQUE_ID = "idokep-radar"
+RADAR_IMAGE_UNIQUE_ID = "radar-latest-image"
+RADAR_CAMERA_UNIQUE_ID = "radar-image-stream"
 
 POLLEN_CATEGORIES = {
     "Pázsitfűfélék": "grass",
@@ -69,6 +74,7 @@ ATTR_API_POLLEN_SENSORS = "pollen_sensors"
 ATTR_API_POLLEN_LOCATION = "pollen_location"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
 STATION_PLATFORMS = [Platform.SENSOR]
+RADAR_PLATFORMS = [Platform.IMAGE, Platform.CAMERA]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
     "HomeAssistant-idokep/{integration_version} "
