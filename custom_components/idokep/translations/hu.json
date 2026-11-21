@@ -18,16 +18,6 @@
           "location": "Település neve. Az ékezet elhagyható: az \"erd\" is Érdet jelenti."
         }
       },
-      "reconfigure": {
-        "title": "Helyszín módosítása",
-        "description": "Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.",
-        "data": {
-          "location": "Helyszín"
-        },
-        "data_description": {
-          "location": "Település neve, ahogy az idokep.hu-n szerepel."
-        }
-      },
       "station": {
         "title": "Térképes állomás hozzáadása",
         "description": "Add meg az állomás nevét vagy Időkép-azonosítóját. Minden állomás külön eszközként jelenik meg.",
@@ -36,6 +26,16 @@
         },
         "data_description": {
           "measurement_point": "Az állomás pontos nevét vagy Időkép-azonosítóját add meg."
+        }
+      },
+      "reconfigure": {
+        "title": "Helyszín módosítása",
+        "description": "Az entitásazonosítók nem változnak, így a vezérlőpultok és az automatizálások tovább működnek.",
+        "data": {
+          "location": "Helyszín"
+        },
+        "data_description": {
+          "location": "Település neve, ahogy az idokep.hu-n szerepel."
         }
       }
     },
