@@ -12,16 +12,18 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_LOCATION,
+    CONF_STATION_CONFIG_ENTRY,
     CONFIG_FLOW_VERSION,
     DOMAIN,
     LEGACY_CONF_LOCATION,
     LEGACY_DEFAULT_TITLE,
     LEGACY_UNIQUE_ID,
     PLATFORMS,
+    STATION_PLATFORMS,
     entry_unique_id,
     weather_unique_id,
 )
-from .coordinator import WeatherUpdateCoordinator
+from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,11 +35,26 @@ class IdokepData:
     coordinator: WeatherUpdateCoordinator
 
 
-type IdokepConfigEntry = ConfigEntry[IdokepData]
+@dataclass
+class IdokepStationData:
+    """Runtime data for one station config entry."""
+
+    coordinator: StationUpdateCoordinator
+
+
+type IdokepConfigEntry = ConfigEntry[IdokepData | IdokepStationData]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Set up one Időkép location."""
+    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+        coordinator = StationUpdateCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = IdokepStationData(coordinator)
+        entry.async_on_unload(entry.add_update_listener(_async_reload_on_change))
+        await hass.config_entries.async_forward_entry_setups(entry, STATION_PLATFORMS)
+        return True
+
     coordinator = WeatherUpdateCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
@@ -55,7 +72,11 @@ async def _async_reload_on_change(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if entry.data.get(CONF_STATION_CONFIG_ENTRY):
+        platforms = STATION_PLATFORMS
+    else:
+        platforms = PLATFORMS
+    return await hass.config_entries.async_unload_platforms(entry, platforms)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

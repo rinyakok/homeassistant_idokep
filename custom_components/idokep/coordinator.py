@@ -54,9 +54,11 @@ from .const import (
     CONF_POLLEN_SENSORS_ENABLED,
     CONF_SMOG_SENSORS_ENABLED,
     CONF_SMOG_STATIONS,
-    CONF_STATION_SENSORS_ENABLED,
+    CONF_STATION_NAME,
+    CONF_STATION_UPDATE_INTERVAL,
     DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
+    DEFAULT_STATION_UPDATE_INTERVAL,
     DOMAIN,
     POLLEN_CATEGORIES,
     USER_AGENT_TEMPLATE,
@@ -1127,8 +1129,6 @@ async def FetchWeatherData(
     budapest_tz: tzinfo,
     request_headers: dict | None = None,
     forecast_days: int = DEFAULT_FORECAST_DAYS,
-    station_sensors_enabled: bool = False,
-    measurement_point: str | None = None,
     smog_station_ids: list[str] | None = None,
     pollen_location: str | None = None,
 ) -> dict:
@@ -1165,12 +1165,6 @@ async def FetchWeatherData(
         # Keep the 15 days if the 30-day page can't be read.
         daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
-    station_sensors: dict[str, dict[str, Any] | None] = {}
-    if station_sensors_enabled:
-        station_sensors = await FetchStationWeatherData(
-            session, measurement_point or "", request_headers
-        )
-
     smog_sensors: dict[str, dict[str, Any] | None] = {}
     if smog_station_ids:
         smog_sensors = await FetchSmogData(session, smog_station_ids, request_headers)
@@ -1194,7 +1188,7 @@ async def FetchWeatherData(
         ATTR_API_CURRENT: current,
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
-        ATTR_API_STATION_SENSORS: station_sensors,
+        ATTR_API_STATION_SENSORS: {},
         ATTR_API_SMOG_SENSORS: smog_sensors,
         ATTR_API_POLLEN_SENSORS: pollen_sensors,
         ATTR_API_POLLEN_LOCATION: pollen_location,
@@ -1223,7 +1217,6 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
         self._location: str = entry.data[CONF_LOCATION]
-        self._station_not_found_logged = False
         self._fallback_logged = False
         self._attr_supported_features = (
             WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
@@ -1260,12 +1253,10 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 self.local_tz,
                 self.budapest_tz,
                 self.request_headers,
-                self.config_entry.options.get(
+                forecast_days=self.config_entry.options.get(
                     CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
                 ),
-                self.config_entry.options.get(CONF_STATION_SENSORS_ENABLED, False),
-                self.config_entry.options.get(CONF_MEASUREMENT_POINT),
-                (
+                smog_station_ids=(
                     [
                         station["id"]
                         for station in self.config_entry.data.get(
@@ -1275,7 +1266,7 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                     if self.config_entry.options.get(CONF_SMOG_SENSORS_ENABLED, False)
                     else None
                 ),
-                (
+                pollen_location=(
                     self.config_entry.data.get(CONF_POLLEN_LOCATION)
                     if self.config_entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False)
                     else None
@@ -1285,16 +1276,6 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err
 
         resolved = data[ATTR_API_LOCATION]
-        if self.config_entry.options.get(CONF_STATION_SENSORS_ENABLED, False):
-            found = any(data[ATTR_API_STATION_SENSORS].values())
-            if not found and not self._station_not_found_logged:
-                self._station_not_found_logged = True
-                _LOGGER.warning(
-                    "No Időkép map measurements found for point %r",
-                    self.config_entry.options.get(CONF_MEASUREMENT_POINT),
-                )
-            elif found:
-                self._station_not_found_logged = False
         if (
             resolved
             and entry_unique_id(resolved) != entry_unique_id(self._location)
@@ -1308,3 +1289,41 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 resolved,
             )
         return data
+
+
+class StationUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch map measurements for one independently configured station."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize coordinator."""
+        self._measurement_point = entry.data[CONF_MEASUREMENT_POINT]
+        self.request_headers: dict[str, str] | None = None
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} station {entry.data[CONF_STATION_NAME]}",
+            update_interval=timedelta(
+                minutes=entry.options.get(
+                    CONF_STATION_UPDATE_INTERVAL, DEFAULT_STATION_UPDATE_INTERVAL
+                )
+            ),
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update measurements from the Időkép map."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        try:
+            measurements = await FetchStationWeatherData(
+                async_get_clientsession(self.hass),
+                self._measurement_point,
+                self.request_headers,
+            )
+        except (aiohttp.ClientError, TimeoutError, UpdateFailed) as err:
+            raise UpdateFailed(
+                f"Error fetching station data from idokep.hu: {err}"
+            ) from err
+        return {ATTR_API_STATION_SENSORS: measurements}

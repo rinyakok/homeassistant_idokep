@@ -22,10 +22,13 @@ CONF_FORECAST_DAYS = "forecast_days"
 DEFAULT_FORECAST_DAYS = 15
 FORECAST_DAYS_CHOICES = (15, 30)
 
-# Optional map station sensors.
-CONF_STATION_SENSORS_ENABLED = "station_sensors_enabled"
+# Separate config entry for one map station.
+CONF_STATION_CONFIG_ENTRY = "station_config_entry"
 CONF_MEASUREMENT_POINT = "measurement_point"
-DEFAULT_STATION_SENSORS_ENABLED = False
+CONF_STATION_NAME = "station_name"
+CONF_STATION_UPDATE_INTERVAL = "station_update_interval"
+DEFAULT_STATION_UPDATE_INTERVAL = 20
+STATION_UPDATE_INTERVAL_CHOICES = tuple(range(5, 61, 5))
 CONF_SMOG_SENSORS_ENABLED = "smog_sensors_enabled"
 CONF_SMOG_STATIONS = "smog_stations"
 CONF_POLLEN_SENSORS_ENABLED = "pollen_sensors_enabled"
@@ -65,6 +68,7 @@ ATTR_API_SMOG_SENSORS = "smog_sensors"
 ATTR_API_POLLEN_SENSORS = "pollen_sensors"
 ATTR_API_POLLEN_LOCATION = "pollen_location"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
+STATION_PLATFORMS = [Platform.SENSOR]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
     "HomeAssistant-idokep/{integration_version} "
@@ -81,3 +85,8 @@ def entry_unique_id(location: str) -> str:
 def weather_unique_id(entry_id: str, location: str) -> str:
     """Return the weather entity unique ID (same format as HA-Idokep)."""
     return f"{entry_id}_weather_{slugify(location)}"
+
+
+def station_entry_unique_id(station_id: str) -> str:
+    """Return a unique config entry ID for one map station."""
+    return f"station-{slugify(station_id, separator='-')}"
