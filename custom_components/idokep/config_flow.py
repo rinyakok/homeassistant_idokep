@@ -54,7 +54,7 @@ from .coordinator import (
     BUDAPEST_TZ_NAME,
     FetchPollenCities,
     FetchSmogCities,
-    FetchStationWeatherData,
+    FetchStationChoices,
     FetchWeatherData,
     StationDataError,
     async_request_headers,
@@ -106,9 +106,23 @@ def _schema(default: str | None = None) -> vol.Schema:
     )
 
 
-def _station_schema() -> vol.Schema:
-    """Return the map station input form."""
-    return vol.Schema({vol.Required(CONF_MEASUREMENT_POINT): TextSelector()})
+def _station_option(station: dict[str, str]) -> str:
+    """Return a user-visible station option with its ID for disambiguation."""
+    return f"{station['name']} ({station['id']})"
+
+
+def _station_schema(stations: list[dict[str, str]]) -> vol.Schema:
+    """Return a dropdown populated with available map stations."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_MEASUREMENT_POINT): SelectSelector(
+                SelectSelectorConfig(
+                    options=[_station_option(station) for station in stations],
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
 
 
 def _city_schema(city_key: str, cities: list[str]) -> vol.Schema:
@@ -196,63 +210,55 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Add one map station as an independent config entry."""
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            point = user_input[CONF_MEASUREMENT_POINT].strip()
-            if not point:
-                errors["base"] = "station_required"
-                return self.async_show_form(
-                    step_id="station",
-                    data_schema=_station_schema(),
-                    errors=errors,
-                )
+        if user_input is None:
             try:
-                measurements = await FetchStationWeatherData(
+                stations = await FetchStationChoices(
                     async_get_clientsession(self.hass),
-                    point,
                     await async_request_headers(self.hass),
                 )
-            except (aiohttp.ClientError, TimeoutError) as err:
-                _LOGGER.warning("Unable to validate Időkép station %r: %s", point, err)
-                errors["base"] = "cannot_connect"
-            else:
-                observation = next(
-                    (value for value in measurements.values() if value), None
-                )
-                if observation is None:
-                    errors["base"] = "station_not_found"
-                else:
-                    station_id = observation.get("station_id")
-                    station_name = observation.get("station_name")
-                    if (
-                        not isinstance(station_id, str)
-                        or not station_id.strip()
-                        or not isinstance(station_name, str)
-                        or not station_name.strip()
-                    ):
-                        errors["base"] = "station_not_found"
-                        return self.async_show_form(
-                            step_id="station",
-                            data_schema=_station_schema(),
-                            errors=errors,
-                        )
-                    station_id = station_id.strip()
-                    station_name = station_name.strip()
-                    await self.async_set_unique_id(station_entry_unique_id(station_id))
-                    self._abort_if_unique_id_configured()
-                    return self.async_create_entry(
-                        title=station_name,
-                        data={
-                            CONF_STATION_CONFIG_ENTRY: True,
-                            CONF_MEASUREMENT_POINT: station_id,
-                            CONF_STATION_NAME: station_name,
-                        },
-                    )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép map stations: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not stations:
+                return self.async_abort(reason="no_stations")
+            self._available_stations = stations
+            return self.async_show_form(
+                step_id="station",
+                data_schema=_station_schema(stations),
+            )
 
-        return self.async_show_form(
-            step_id="station",
-            data_schema=_station_schema(),
-            errors=errors,
+        station_id = user_input.get(CONF_MEASUREMENT_POINT)
+        if not isinstance(station_id, str) or not station_id.strip():
+            return self.async_show_form(
+                step_id="station",
+                data_schema=_station_schema(getattr(self, "_available_stations", [])),
+                errors={"base": "station_required"},
+            )
+        station = next(
+            (
+                station
+                for station in getattr(self, "_available_stations", [])
+                if _station_option(station) == station_id
+            ),
+            None,
+        )
+        if station is None:
+            return self.async_abort(reason="station_not_available")
+
+        station_id = station["id"]
+        await self.async_set_unique_id(station_entry_unique_id(station_id))
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=station["name"],
+            data={
+                CONF_STATION_CONFIG_ENTRY: True,
+                CONF_MEASUREMENT_POINT: station_id,
+                CONF_STATION_NAME: station["name"],
+            },
         )
 
     async def async_step_smog(

@@ -25,11 +25,14 @@ from custom_components.idokep import (
 )
 from custom_components.idokep.const import (
     CONF_FORECAST_DAYS,
+    CONF_MEASUREMENT_POINT,
     CONF_POLLEN_CITY,
     CONF_POLLEN_CONFIG_ENTRY,
     CONF_RADAR_CONFIG_ENTRY,
     CONF_SMOG_CITY,
     CONF_SMOG_CONFIG_ENTRY,
+    CONF_STATION_CONFIG_ENTRY,
+    CONF_STATION_NAME,
     CONF_STATION_UPDATE_INTERVAL,
     DOMAIN,
 )
@@ -163,7 +166,7 @@ async def _start_user_flow(hass: HomeAssistant, location: str):
     )
 
 
-async def _start_station_flow(hass: HomeAssistant, measurement_point: str):
+async def _start_station_flow(hass: HomeAssistant, station_option: str):
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -173,7 +176,7 @@ async def _start_station_flow(hass: HomeAssistant, measurement_point: str):
     )
     assert result["type"] is FlowResultType.FORM
     return await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"measurement_point": measurement_point}
+        result["flow_id"], {CONF_MEASUREMENT_POINT: station_option}
     )
 
 
@@ -732,17 +735,38 @@ async def test_station_entries_create_separate_station_devices(
     )
 
 
-async def test_station_flow_validates_measurement_point(
+async def test_station_flow_selects_an_available_station(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """Require a station name/ID and reject unmatched map points."""
+    """The station dropdown stores the selected map station's ID and name."""
     fake_idokep.pages.update(_station_map_pages())
-    result = await _start_station_flow(hass, "")
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "station_required"}
+    result = await _start_station_flow(hass, "Érd (station-7)")
 
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Érd"
+    assert result["data"] == {
+        CONF_STATION_CONFIG_ENTRY: True,
+        CONF_MEASUREMENT_POINT: "station-7",
+        CONF_STATION_NAME: "Érd",
+    }
+
+
+async def test_station_flow_rejects_an_unavailable_selection(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """The flow does not accept a station ID outside its dropdown options."""
+    fake_idokep.pages.update(_station_map_pages())
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"measurement_point": "missing-station"}
+        result["flow_id"], {"next_step_id": "station"}
     )
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "station_not_found"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MEASUREMENT_POINT: "missing-station"}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "station_not_available"

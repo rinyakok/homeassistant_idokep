@@ -22,12 +22,12 @@
       },
       "station": {
         "title": "Térképes állomás hozzáadása",
-        "description": "Add meg az állomás nevét vagy Időkép-azonosítóját. Minden állomás külön eszközként jelenik meg.",
+        "description": "Válassz egy elérhető állomást a legördülő listából. Minden állomás külön eszközként jelenik meg.",
         "data": {
-          "measurement_point": "Állomás neve vagy azonosítója"
+          "measurement_point": "Állomás"
         },
         "data_description": {
-          "measurement_point": "Az állomás pontos nevét vagy Időkép-azonosítóját add meg."
+          "measurement_point": "A lista az Időkép térképein elérhető állomásokat tartalmazza."
         }
       },
       "smog": {
@@ -65,8 +65,7 @@
       "cannot_connect": "Nem sikerült csatlakozni az idokep.hu-hoz. Próbáld újra később.",
       "location_not_found": "Ehhez a helyszínhez nincs időjárási adat az idokep.hu-n.",
       "location_fallback": "Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: {shown}. Ellenőrizd az írásmódot.",
-      "station_not_found": "Ehhez az állomáshoz nem található térképes mérési adat. Ellenőrizd a nevet vagy azonosítót.",
-      "station_required": "Add meg az állomás nevét vagy azonosítóját."
+      "station_required": "Válassz egy állomást a listából."
     },
     "abort": {
       "already_configured": "Ez a helyszín vagy állomás már hozzá van adva.",
@@ -78,7 +77,9 @@
       "no_smog_cities": "Nem található mérési adattal rendelkező település a szmogtérképen.",
       "no_pollen_cities": "Nem található mérési adattal rendelkező település a pollentérképen.",
       "city_not_selected": "Nem választottál települést, ezért nem jött létre szenzorbejegyzés.",
-      "city_not_available": "A kiválasztott település már nem érhető el a térképen."
+      "city_not_available": "A kiválasztott település már nem érhető el a térképen.",
+      "no_stations": "Nem található állomás az Időkép térképein.",
+      "station_not_available": "A kiválasztott állomás már nem érhető el a térképeken."
     }
   },
   "entity": {

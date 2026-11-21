@@ -12,6 +12,7 @@ from custom_components.idokep.coordinator import (
     FetchSmogCityData,
     FetchSmogData,
     FetchSmogStations,
+    FetchStationChoices,
     FetchStationWeatherData,
 )
 
@@ -93,6 +94,13 @@ async def test_station_data_missing_measurement_is_none() -> None:
 
     assert data["temperature"]["value"] == 12.5
     assert data["precipitation"] is None
+
+
+async def test_station_choices_are_deduplicated_across_maps() -> None:
+    """The selector lists a map station once, regardless of available maps."""
+    stations = await FetchStationChoices(_session())
+
+    assert stations == [{"id": "station-7", "name": "Érd"}]
 
 
 def _smog_page() -> str:
