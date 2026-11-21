@@ -155,6 +155,17 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
             data={CONF_RADAR_CONFIG_ENTRY: True},
         )
 
+    async def async_step_radar(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add the single global radar image and stream entry."""
+        await self.async_set_unique_id(RADAR_CONFIG_ENTRY_UNIQUE_ID)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=RADAR_CONFIG_ENTRY_TITLE,
+            data={CONF_RADAR_CONFIG_ENTRY: True},
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> IdokepOptionsFlow:
@@ -179,8 +190,14 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Choose the kind of Időkép entry to add."""
+        menu_options = ["location", "station", "smog", "pollen"]
+        if not any(
+            entry.unique_id == RADAR_CONFIG_ENTRY_UNIQUE_ID
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        ):
+            menu_options.append("radar")
         return self.async_show_menu(
-            step_id="user", menu_options=["location", "station", "smog", "pollen"]
+            step_id="user", menu_options=menu_options
         )
 
     async def async_step_location(

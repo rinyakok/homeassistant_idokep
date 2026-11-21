@@ -7,7 +7,8 @@
           "location": "Weather location",
           "station": "Map station sensors",
           "smog": "Smog sensors",
-          "pollen": "Pollen sensors"
+          "pollen": "Pollen sensors",
+          "radar": "Radar image and stream"
         }
       },
       "location": {
@@ -68,7 +69,7 @@
       "station_required": "Select a station from the list."
     },
     "abort": {
-      "already_configured": "This location or station is already added.",
+      "already_configured": "This data source is already added.",
       "reconfigure_successful": "The location was changed.",
       "not_supported": "This configuration is managed automatically.",
       "radar_no_options": "The global radar entry has no options.",

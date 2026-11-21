@@ -120,12 +120,30 @@ async def _setup(hass: HomeAssistant, entry: MockConfigEntry | None = None):
     return entry
 
 
-async def test_radar_entities_are_created_globally_once(
+async def test_radar_entry_is_added_separately_and_only_once(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """Multiple location entries share one radar image and camera."""
+    """Radar sensors are explicitly added, remain global and cannot be duplicated."""
     await _setup(hass)
     await _setup(hass, _entry("Győr", "gyor"))
+
+    radar_entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+    ]
+    assert radar_entries == []
+
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert flow["type"] is FlowResultType.MENU
+    assert "radar" in flow["menu_options"]
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {"next_step_id": "radar"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
 
     radar_entries = [
         entry
@@ -142,6 +160,19 @@ async def test_radar_entities_are_created_globally_once(
     entities = er.async_entries_for_config_entry(registry, radar_entry.entry_id)
     assert {entity.domain for entity in entities} == {"camera", "image"}
     assert len(entities) == 2
+
+    duplicate = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_IMPORT},
+        data={CONF_RADAR_CONFIG_ENTRY: True},
+    )
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
+
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert "radar" not in flow["menu_options"]
 
 
 async def _start_user_flow(hass: HomeAssistant, location: str):

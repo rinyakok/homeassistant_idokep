@@ -34,7 +34,7 @@
 | 📍 **Map station sensors** | Add any number of stations as separate entries/devices; each has temperature, 24-hour precipitation, wind speed and gust sensors |
 | 🌫️ **Smog sensors** | Add a separate entry and select an available city; its PM10 and PM2.5 station readings appear as sensors |
 | 🌱 **Pollen sensors** | Add a separate entry and select an available city; qualitative pollen levels appear as sensors |
-| 🌧️ **Radar image and stream** | One global latest radar image and a camera stream cycling through images retained for up to one hour |
+| 🌧️ **Radar image and stream** | Add one separate global entry for the latest radar image and a camera stream cycling through images retained for up to one hour |
 | ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
 | ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
 | 📍 **Many places** | Any number of places, one device per place |
@@ -69,7 +69,7 @@ For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g.
 - Each station entry has its own update interval, configurable from 5 minutes to 1 hour in 5-minute steps (default: 20 minutes).
 - Existing location entries that used map station sensors need the station added again as a separate entry; the old location-level station sensors are no longer created.
 - ✏️ **Reconfigure** changes the place; entity IDs stay the same.
-- 🌧️ The first place automatically creates one separate **Időkép radar** entry with a latest-image entity and a camera stream. The image history fills gradually after startup.
+- 🌧️ Add **Időkép radar** separately from the integration menu (**Radar image and stream**). Only one global radar entry can be added; it provides the latest-image entity and camera stream. The image history fills gradually after startup.
 
 ### 🧩 Entities (for a place called Érd)
 

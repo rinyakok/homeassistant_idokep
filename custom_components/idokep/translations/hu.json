@@ -7,7 +7,8 @@
           "location": "Időjárási helyszín",
           "station": "Térképes állomásszenzorok",
           "smog": "Szmogszenzorok",
-          "pollen": "Pollenszenzorok"
+          "pollen": "Pollenszenzorok",
+          "radar": "Radarkép és -stream"
         }
       },
       "location": {
@@ -68,7 +69,7 @@
       "station_required": "Válassz egy állomást a listából."
     },
     "abort": {
-      "already_configured": "Ez a helyszín vagy állomás már hozzá van adva.",
+      "already_configured": "Ez az adatforrás már hozzá van adva.",
       "reconfigure_successful": "A helyszín módosult.",
       "not_supported": "Ezt a beállítást az integráció automatikusan kezeli.",
       "radar_no_options": "A globális radarbejegyzéshez nincs további beállítás.",
