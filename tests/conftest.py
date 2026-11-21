@@ -51,14 +51,22 @@ def pages_with_alerts() -> dict[str, str]:
 class FakeResponse:
     """Minimal stand-in for an aiohttp response."""
 
-    def __init__(self, text: str) -> None:
-        self._text = text
+    def __init__(self, content: str | bytes) -> None:
+        self._content = content.encode() if isinstance(content, str) else content
+        self.headers = {
+            "Content-Type": (
+                "image/jpeg" if self._content.startswith(b"\xff\xd8") else "text/html"
+            )
+        }
 
     def raise_for_status(self) -> None:
         return None
 
     async def text(self) -> str:
-        return self._text
+        return self._content.decode()
+
+    async def read(self) -> bytes:
+        return self._content
 
     async def __aenter__(self) -> FakeResponse:
         return self
@@ -82,12 +90,20 @@ class FakeClientSession:
         self.requested: list[str] = []
         self.headers: list[dict | None] = []
         self.error: Exception | None = None
+        self.radar_image = b"\xff\xd8\xff\xe0fake-jpeg"
 
     def get(self, url: str, headers=None, timeout=None) -> FakeResponse:
         self.requested.append(url)
         self.headers.append(headers)
         if self.error is not None:
             raise self.error
+        if url.split("?", 1)[0].endswith("/radar/radar0.jpg"):
+            return FakeResponse(self.radar_image)
+        if url.rstrip("/").endswith("/radar"):
+            return FakeResponse(
+                '<meta property="og:image" '
+                'content="https://www.idokep.hu/radar/radar0.jpg?test">'
+            )
         for part, page in self.pages.items():
             if part in url:
                 if self.echo_location:
@@ -114,7 +130,7 @@ def enable_custom_integrations(enable_custom_integrations):
 def fake_idokep(monkeypatch) -> FakeClientSession:
     """Answer idokep.hu requests from the saved pages."""
     session = FakeClientSession()
-    for module in ("coordinator", "config_flow"):
+    for module in ("coordinator", "config_flow", "radar"):
         monkeypatch.setattr(
             f"custom_components.idokep.{module}.async_get_clientsession",
             lambda hass: session,

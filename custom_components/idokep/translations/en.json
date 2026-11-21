@@ -48,7 +48,9 @@
     },
     "abort": {
       "already_configured": "This location or station is already added.",
-      "reconfigure_successful": "The location was changed."
+      "reconfigure_successful": "The location was changed.",
+      "not_supported": "This configuration is managed automatically.",
+      "radar_no_options": "The global radar entry has no options."
     }
   },
   "entity": {
@@ -129,6 +131,16 @@
       },
       "alert_red": {
         "name": "Red alert"
+      }
+    },
+    "image": {
+      "latest_radar_image": {
+        "name": "Latest radar image"
+      }
+    },
+    "camera": {
+      "radar_image_stream": {
+        "name": "Radar image stream"
       }
     }
   },

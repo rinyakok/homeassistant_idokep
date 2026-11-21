@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
@@ -12,6 +13,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_LOCATION,
+    CONF_RADAR_CONFIG_ENTRY,
     CONF_STATION_CONFIG_ENTRY,
     CONFIG_FLOW_VERSION,
     DOMAIN,
@@ -19,11 +21,14 @@ from .const import (
     LEGACY_DEFAULT_TITLE,
     LEGACY_UNIQUE_ID,
     PLATFORMS,
+    RADAR_CONFIG_ENTRY_UNIQUE_ID,
+    RADAR_PLATFORMS,
     STATION_PLATFORMS,
     entry_unique_id,
     weather_unique_id,
 )
 from .coordinator import StationUpdateCoordinator, WeatherUpdateCoordinator
+from .radar import RadarUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +47,14 @@ class IdokepStationData:
     coordinator: StationUpdateCoordinator
 
 
-type IdokepConfigEntry = ConfigEntry[IdokepData | IdokepStationData]
+@dataclass
+class IdokepRadarData:
+    """Runtime data for the global radar config entry."""
+
+    coordinator: RadarUpdateCoordinator
+
+
+type IdokepConfigEntry = ConfigEntry[IdokepData | IdokepStationData | IdokepRadarData]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bool:
@@ -55,6 +67,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bo
         await hass.config_entries.async_forward_entry_setups(entry, STATION_PLATFORMS)
         return True
 
+    if entry.data.get(CONF_RADAR_CONFIG_ENTRY):
+        coordinator = RadarUpdateCoordinator(hass, entry)
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = IdokepRadarData(coordinator)
+        await hass.config_entries.async_forward_entry_setups(entry, RADAR_PLATFORMS)
+        return True
+
     coordinator = WeatherUpdateCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
@@ -62,7 +81,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> bo
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_change))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    hass.async_create_task(_async_ensure_radar_entry(hass))
     return True
+
+
+async def _async_ensure_radar_entry(hass: HomeAssistant) -> None:
+    """Create the single global radar entry alongside the first location."""
+    if any(
+        entry.unique_id == RADAR_CONFIG_ENTRY_UNIQUE_ID
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    ):
+        return
+    await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_IMPORT},
+        data={CONF_RADAR_CONFIG_ENTRY: True},
+    )
+
+
+def get_radar_coordinator(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> RadarUpdateCoordinator:
+    """Return the global radar coordinator for its config entry."""
+    runtime_data = entry.runtime_data
+    if not isinstance(runtime_data, IdokepRadarData):
+        raise RuntimeError("Radar config entry has invalid runtime data")
+    return runtime_data.coordinator
 
 
 async def _async_reload_on_change(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -74,6 +118,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: IdokepConfigEntry) -> b
     """Unload a config entry."""
     if entry.data.get(CONF_STATION_CONFIG_ENTRY):
         platforms = STATION_PLATFORMS
+    elif entry.data.get(CONF_RADAR_CONFIG_ENTRY):
+        platforms = RADAR_PLATFORMS
     else:
         platforms = PLATFORMS
     return await hass.config_entries.async_unload_platforms(entry, platforms)
