@@ -15,6 +15,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.idokep.const import (
+    CONF_FORECAST_DAYS,
     CONF_MEASUREMENT_POINT,
     CONF_POLLEN_LOCATION,
     CONF_POLLEN_SENSORS_ENABLED,
@@ -531,7 +532,13 @@ async def test_station_sensors_when_enabled(hass: HomeAssistant, fake_idokep) ->
     await _setup(hass, entry)
 
     assert hass.states.get("sensor.idokep_erd_station_temperature").state == "12.5"
-    assert hass.states.get("sensor.idokep_erd_station_precipitation").state == "2.4"
+    precipitation_entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_station_precipitation"
+    )
+    assert precipitation_entity_id is not None
+    precipitation_state = hass.states.get(precipitation_entity_id)
+    assert precipitation_state is not None
+    assert precipitation_state.state == "2.4"
     assert hass.states.get("sensor.idokep_erd_station_wind_speed").state == "4.0"
     assert hass.states.get("sensor.idokep_erd_station_wind_gust").state == "6.0"
     assert (
@@ -657,7 +664,7 @@ async def test_options_30_day_forecast(hass: HomeAssistant, fake_idokep) -> None
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"forecast_days": 30}
+    assert entry.options[CONF_FORECAST_DAYS] == 30
     assert len(await _daily_forecast(hass)) == 30
     assert any("/30napos/" in url for url in fake_idokep.requested)
 
