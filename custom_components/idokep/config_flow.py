@@ -196,9 +196,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
             for entry in self.hass.config_entries.async_entries(DOMAIN)
         ):
             menu_options.append("radar")
-        return self.async_show_menu(
-            step_id="user", menu_options=menu_options
-        )
+        return self.async_show_menu(step_id="user", menu_options=menu_options)
 
     async def async_step_location(
         self, user_input: dict[str, Any] | None = None
@@ -421,10 +419,9 @@ class IdokepOptionsFlow(OptionsFlow):
         """Choose the forecast length or station refresh interval."""
         if self.config_entry.data.get(CONF_STATION_CONFIG_ENTRY):
             return await self.async_step_station(user_input)
-        if (
-            self.config_entry.data.get(CONF_SMOG_CONFIG_ENTRY)
-            or self.config_entry.data.get(CONF_POLLEN_CONFIG_ENTRY)
-        ):
+        if self.config_entry.data.get(
+            CONF_SMOG_CONFIG_ENTRY
+        ) or self.config_entry.data.get(CONF_POLLEN_CONFIG_ENTRY):
             return self.async_abort(reason="sensor_no_options")
         if self.config_entry.data.get(CONF_RADAR_CONFIG_ENTRY):
             return self.async_abort(reason="radar_no_options")

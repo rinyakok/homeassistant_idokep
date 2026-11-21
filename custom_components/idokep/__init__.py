@@ -74,12 +74,9 @@ class IdokepPollenData:
 
     coordinator: PollenUpdateCoordinator
 
+
 type IdokepConfigEntry = ConfigEntry[
-    IdokepData
-    | IdokepStationData
-    | IdokepRadarData
-    | IdokepSmogData
-    | IdokepPollenData
+    IdokepData | IdokepStationData | IdokepRadarData | IdokepSmogData | IdokepPollenData
 ]
 
 
