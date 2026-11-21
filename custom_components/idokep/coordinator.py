@@ -50,10 +50,8 @@ from .const import (
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
     CONF_MEASUREMENT_POINT,
-    CONF_POLLEN_LOCATION,
-    CONF_POLLEN_SENSORS_ENABLED,
-    CONF_SMOG_SENSORS_ENABLED,
-    CONF_SMOG_STATIONS,
+    CONF_POLLEN_CITY,
+    CONF_SMOG_CITY,
     CONF_STATION_NAME,
     CONF_STATION_UPDATE_INTERVAL,
     DEFAULT_FORECAST_DAYS,
@@ -893,6 +891,19 @@ def parse_smog_stations(soup: BeautifulSoup) -> list[dict[str, Any]]:
     return list(stations.values())
 
 
+async def FetchSmogCities(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[str]:
+    """List settlements with current measurements on the smog map."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+    cities = {
+        _location_match_key(station["city"]): station["city"]
+        for station in parse_smog_stations(soup)
+    }
+    return sorted(cities.values(), key=_location_match_key)
+
+
 async def FetchSmogStations(
     session: aiohttp.ClientSession,
     location: str,
@@ -931,6 +942,21 @@ async def FetchSmogData(
     return {station_id: observations.get(station_id) for station_id in station_ids}
 
 
+async def FetchSmogCityData(
+    session: aiohttp.ClientSession,
+    city: str,
+    request_headers: dict | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Fetch all current smog stations for one city."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+    city_key = _location_match_key(city)
+    return {
+        station["id"]: station
+        for station in parse_smog_stations(soup)
+        if _location_match_key(station["city"]) == city_key
+    }
+
+
 def parse_pollen_locations(soup: BeautifulSoup) -> list[dict[str, Any]]:
     """Parse qualitative pollen levels from the image-map tooltips."""
     pollen_map = soup.find("map", attrs={"name": "pollen"})
@@ -960,6 +986,20 @@ def parse_pollen_locations(soup: BeautifulSoup) -> list[dict[str, Any]]:
         if city:
             locations.append({"city": city, "values": values})
     return locations
+
+
+async def FetchPollenCities(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[str]:
+    """List settlements with pollen readings on the pollen map."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
+    cities = {
+        _location_match_key(location["city"]): location["city"]
+        for location in parse_pollen_locations(soup)
+        if location["values"]
+    }
+    return sorted(cities.values(), key=_location_match_key)
 
 
 def _find_pollen_location(
@@ -1129,8 +1169,6 @@ async def FetchWeatherData(
     budapest_tz: tzinfo,
     request_headers: dict | None = None,
     forecast_days: int = DEFAULT_FORECAST_DAYS,
-    smog_station_ids: list[str] | None = None,
-    pollen_location: str | None = None,
 ) -> dict:
     """Download and parse the current weather and the forecasts.
 
@@ -1165,16 +1203,6 @@ async def FetchWeatherData(
         # Keep the 15 days if the 30-day page can't be read.
         daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
-    smog_sensors: dict[str, dict[str, Any] | None] = {}
-    if smog_station_ids:
-        smog_sensors = await FetchSmogData(session, smog_station_ids, request_headers)
-
-    pollen_sensors: dict[str, str] = {}
-    if pollen_location:
-        pollen_sensors = await FetchPollenData(
-            session, pollen_location, request_headers
-        )
-
     if current[ATTR_API_NATIVE_TEMPERATURE] is None and not daily and not hourly:
         raise UpdateFailed(
             f"No weather data found on idokep.hu for {location!r}; "
@@ -1189,9 +1217,9 @@ async def FetchWeatherData(
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
         ATTR_API_STATION_SENSORS: {},
-        ATTR_API_SMOG_SENSORS: smog_sensors,
-        ATTR_API_POLLEN_SENSORS: pollen_sensors,
-        ATTR_API_POLLEN_LOCATION: pollen_location,
+        ATTR_API_SMOG_SENSORS: {},
+        ATTR_API_POLLEN_SENSORS: {},
+        ATTR_API_POLLEN_LOCATION: None,
     }
 
 
@@ -1256,21 +1284,6 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 forecast_days=self.config_entry.options.get(
                     CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
                 ),
-                smog_station_ids=(
-                    [
-                        station["id"]
-                        for station in self.config_entry.data.get(
-                            CONF_SMOG_STATIONS, []
-                        )
-                    ]
-                    if self.config_entry.options.get(CONF_SMOG_SENSORS_ENABLED, False)
-                    else None
-                ),
-                pollen_location=(
-                    self.config_entry.data.get(CONF_POLLEN_LOCATION)
-                    if self.config_entry.options.get(CONF_POLLEN_SENSORS_ENABLED, False)
-                    else None
-                ),
             )
         except (aiohttp.ClientError, TimeoutError) as err:
             raise UpdateFailed(f"Error fetching data from idokep.hu: {err}") from err
@@ -1327,3 +1340,69 @@ class StationUpdateCoordinator(DataUpdateCoordinator):
                 f"Error fetching station data from idokep.hu: {err}"
             ) from err
         return {ATTR_API_STATION_SENSORS: measurements}
+
+
+class SmogUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch smog readings for a separately configured city."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the smog coordinator."""
+        self._city = entry.data[CONF_SMOG_CITY]
+        self.request_headers: dict[str, str] | None = None
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} smog {self._city}",
+            update_interval=WEATHER_UPDATE_INTERVAL,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update the selected city's smog measurements."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        try:
+            stations = await FetchSmogCityData(
+                async_get_clientsession(self.hass),
+                self._city,
+                self.request_headers,
+            )
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            raise UpdateFailed(
+                f"Error fetching smog data from idokep.hu: {err}"
+            ) from err
+        return {ATTR_API_SMOG_SENSORS: stations}
+
+
+class PollenUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch pollen readings for a separately configured city."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the pollen coordinator."""
+        self._city = entry.data[CONF_POLLEN_CITY]
+        self.request_headers: dict[str, str] | None = None
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} pollen {self._city}",
+            update_interval=WEATHER_UPDATE_INTERVAL,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update the selected city's pollen measurements."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        values = await FetchPollenData(
+            async_get_clientsession(self.hass),
+            self._city,
+            self.request_headers,
+        )
+        return {
+            ATTR_API_POLLEN_SENSORS: values,
+            ATTR_API_POLLEN_LOCATION: self._city,
+        }

@@ -10,6 +10,8 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from .const import (
     BASE_IDOKEP_URL,
     CONF_LOCATION,
+    CONF_POLLEN_CITY,
+    CONF_SMOG_CITY,
     CONF_STATION_NAME,
     DOMAIN,
     MANUFACTURER,
@@ -38,6 +40,30 @@ def idokep_station_device_info(entry: ConfigEntry) -> DeviceInfo:
         manufacturer=MANUFACTURER,
         entry_type=DeviceEntryType.SERVICE,
         configuration_url=f"{BASE_IDOKEP_URL}/szel",
+    )
+
+
+def idokep_smog_device_info(entry: ConfigEntry) -> DeviceInfo:
+    """Return the device of one independently configured smog city."""
+    city = entry.data[CONF_SMOG_CITY]
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=f"{NAME} szmog {city}",
+        manufacturer=MANUFACTURER,
+        entry_type=DeviceEntryType.SERVICE,
+        configuration_url=f"{BASE_IDOKEP_URL}/szmog",
+    )
+
+
+def idokep_pollen_device_info(entry: ConfigEntry) -> DeviceInfo:
+    """Return the device of one independently configured pollen city."""
+    city = entry.data[CONF_POLLEN_CITY]
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=f"{NAME} pollen {city}",
+        manufacturer=MANUFACTURER,
+        entry_type=DeviceEntryType.SERVICE,
+        configuration_url=f"{BASE_IDOKEP_URL}/pollen",
     )
 
 

@@ -19,15 +19,17 @@ from custom_components.idokep import (
     DATA_RADAR,
     DATA_RUNTIME,
     get_entry_data,
+    get_pollen_data,
+    get_smog_data,
     get_station_data,
 )
 from custom_components.idokep.const import (
     CONF_FORECAST_DAYS,
-    CONF_POLLEN_LOCATION,
-    CONF_POLLEN_SENSORS_ENABLED,
+    CONF_POLLEN_CITY,
+    CONF_POLLEN_CONFIG_ENTRY,
     CONF_RADAR_CONFIG_ENTRY,
-    CONF_SMOG_SENSORS_ENABLED,
-    CONF_SMOG_STATIONS,
+    CONF_SMOG_CITY,
+    CONF_SMOG_CONFIG_ENTRY,
     CONF_STATION_UPDATE_INTERVAL,
     DOMAIN,
 )
@@ -175,6 +177,22 @@ async def _start_station_flow(hass: HomeAssistant, measurement_point: str):
     )
 
 
+async def _start_city_flow(hass: HomeAssistant, sensor_type: str, city: str):
+    """Start a standalone smog or pollen city entry flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": sensor_type}
+    )
+    assert result["type"] is FlowResultType.FORM
+    key = CONF_SMOG_CITY if sensor_type == "smog" else CONF_POLLEN_CITY
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {key: city}
+    )
+
+
 # --- Entities ----------------------------------------------------------------
 
 
@@ -298,47 +316,26 @@ async def test_user_flow_uses_idokep_spelling(hass: HomeAssistant, fake_idokep) 
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Érd"
-    assert result["data"] == {
-        "location": "Érd",
-        CONF_SMOG_STATIONS: [],
-        CONF_POLLEN_LOCATION: None,
-    }
+    assert result["data"] == {"location": "Érd"}
     assert result["result"].unique_id == "erd"
     await hass.async_block_till_done()
     assert hass.states.get("weather.idokep_erd") is not None
 
 
-async def test_user_flow_offers_smog_only_for_accented_location(
+async def test_smog_city_entry_creates_independent_sensors(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """Matching ignores case but keeps accents significant."""
+    """A selected smog city creates its own device and station sensors."""
     fake_idokep.pages["/szmog"] = _smog_map_page()
-    result = await _start_user_flow(hass, "ÉRD")
+    result = await _start_city_flow(hass, "smog", "Érd")
     entry = result["result"]
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.data[CONF_SMOG_STATIONS] == [
-        {
-            "id": "erd-1",
-            "city": "Érd",
-            "name": "Érd",
-            "source": "OLM",
-            "has_pm25": True,
-        }
-    ]
-
-    options = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        options["flow_id"],
-        {
-            "forecast_days": "15",
-            CONF_SMOG_SENSORS_ENABLED: True,
-        },
-    )
+    assert entry.data == {CONF_SMOG_CONFIG_ENTRY: True, CONF_SMOG_CITY: "Érd"}
     await hass.async_block_till_done()
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_SMOG_SENSORS_ENABLED] is True
+    assert entry.state is ConfigEntryState.LOADED
+    coordinator = get_smog_data(hass, entry).coordinator
+    assert list(coordinator.data["smog_sensors"]) == ["erd-1"]
     registry = er.async_get(hass)
     pm10_entity_id = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm10"
@@ -346,69 +343,55 @@ async def test_user_flow_offers_smog_only_for_accented_location(
     pm25_entity_id = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm25"
     )
-    assert hass.states.get(pm10_entity_id).state == "52.0"
-    assert hass.states.get(pm25_entity_id).state == "18.0"
+    assert float(hass.states.get(pm10_entity_id).state) == 52
+    assert float(hass.states.get(pm25_entity_id).state) == 18
     pm10 = hass.states.get(pm10_entity_id)
     assert pm10.attributes["station_id"] == "erd-1"
     assert pm10.attributes["source"] == "OLM"
 
 
-async def test_user_flow_does_not_match_accentless_smog_location(
+async def test_pollen_city_entry_creates_independent_sensors(
     hass: HomeAssistant, fake_idokep
 ) -> None:
-    """A same-spelling location without the required accent is not offered."""
-    fake_idokep.pages["/szmog"] = _smog_map_page()
+    """A selected pollen city creates its own category sensors."""
     fake_idokep.pages["/pollen"] = _pollen_map_page()
-    fake_idokep.echo_location = False
-
-    result = await _start_user_flow(hass, "erd")
-    await hass.async_block_till_done()
-    options = await hass.config_entries.options.async_init(result["result"].entry_id)
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_SMOG_STATIONS] == []
-    assert result["data"][CONF_POLLEN_LOCATION] is None
-    assert all(
-        getattr(key, "schema", key)
-        not in {CONF_SMOG_SENSORS_ENABLED, CONF_POLLEN_SENSORS_ENABLED}
-        for key in options["data_schema"].schema
-    )
-
-
-async def test_pollen_toggle_and_sensors_when_location_matches(
-    hass: HomeAssistant, fake_idokep
-) -> None:
-    """Matching pollen map data offers an option and creates category sensors."""
-    fake_idokep.pages["/pollen"] = _pollen_map_page()
-    result = await _start_user_flow(hass, "ÉRD")
+    result = await _start_city_flow(hass, "pollen", "Érd")
     entry = result["result"]
-    await hass.async_block_till_done()
-
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.data[CONF_POLLEN_LOCATION] == "Érd"
-
-    options = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        options["flow_id"],
-        {
-            "forecast_days": "15",
-            CONF_POLLEN_SENSORS_ENABLED: True,
-        },
-    )
+    assert entry.data == {CONF_POLLEN_CONFIG_ENTRY: True, CONF_POLLEN_CITY: "Érd"}
     await hass.async_block_till_done()
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_POLLEN_SENSORS_ENABLED] is True
+    assert entry.state is ConfigEntryState.LOADED
+    coordinator = get_pollen_data(hass, entry).coordinator
+    assert coordinator.data["pollen_sensors"] == {
+        "grass": "alacsony",
+        "plantain": "nincs",
+        "ragweed": "közepes",
+    }
     registry = er.async_get(hass)
     grass_id = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_pollen_grass"
     )
-    ragweed_id = registry.async_get_entity_id(
-        "sensor", DOMAIN, f"{entry.entry_id}_pollen_ragweed"
-    )
     assert hass.states.get(grass_id).state == "alacsony"
-    assert hass.states.get(ragweed_id).state == "közepes"
     assert hass.states.get(grass_id).attributes["location"] == "Érd"
+
+
+async def test_empty_city_selection_does_not_create_entry_or_start_polling(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """An empty optional selector aborts before setting up a data coordinator."""
+    fake_idokep.pages["/pollen"] = _pollen_map_page()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pollen"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "city_not_selected"
+    assert not hass.config_entries.async_entries(DOMAIN)
+    assert sum(url.endswith("/pollen") for url in fake_idokep.requested) == 1
 
 
 async def test_user_flow_place_unknown_to_idokep(hass: HomeAssistant) -> None:
@@ -482,11 +465,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {
-        "location": "Győr",
-        CONF_SMOG_STATIONS: [],
-        CONF_POLLEN_LOCATION: None,
-    }
+    assert entry.data == {"location": "Győr"}
     assert entry.title == "Győr"
     assert entry.unique_id == "gyor"
     registry = er.async_get(hass)
