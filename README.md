@@ -50,12 +50,12 @@ This integration is in the **HACS default list**, no custom repository needed.
 
 Requires Home Assistant **2024.1** or newer. HACS cannot select a release based on the HA version, so choose the matching release manually:
 
-| Home Assistant | HACS release tag | Source branch |
-| --- | --- | --- |
-| 2024 | `v2.0.0-ha2024` | `compat/ha-2024-support` |
-| 2026 | `v2.0.0` | `main` |
+| Home Assistant | HACS release tag |
+| --- | --- |
+| 2024 | `v2.0.0-ha2024` |
+| 2026 | `v2.0.0` |
 
-For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followed by a number (e.g. `v2.0.0-ha2024-rc.1`), and mark the GitHub release as a pre-release. HACS beta versions must be enabled to install it. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
+For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g. `v2.0.0-ha2024-rc.1`), and mark the GitHub release as a pre-release. HACS beta versions must be enabled to install it. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
 
 ### ⚙️ Setup
 
@@ -78,7 +78,7 @@ For pre-releases, append `-alpha`, `-beta`, `-rc`, or `-dev`, optionally followe
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
 | 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
 | 📍 `sensor.idokep_erd_station_temperature` | Optional selected-station temperature (°C) |
-| 🌧️ `sensor.idokep_erd_station_precipitation` | Optional selected-station 24-hour precipitation (mm) |
+| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Optional selected-station 24-hour precipitation (mm) |
 | 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Optional station wind speed and gust (km/h); direction and measurement time are attributes |
 | 🌫️ `sensor.idokep_erd_<station>_pm10` / `_pm25` | Optional station PM10 and PM2.5 hourly averages (µg/m³); station, source and measurement time are attributes |
 | 🌱 `sensor.idokep_erd_pollen_<type>` | Optional qualitative level (`nincs`, `alacsony`, `közepes`, etc.) for each pollen type |
@@ -161,12 +161,12 @@ Az integráció benne van a **HACS alapértelmezett listájában**, egyéni tár
 > [!IMPORTANT]
 > Legalább **Home Assistant 2024.1** szükséges. A HACS nem választ automatikusan HA-verzió alapján, ezért kézzel válaszd ki a megfelelő kiadást:
 >
-> | Home Assistant | HACS release tag | Forráság |
-> | --- | --- | --- |
-> | 2024 | `v2.0.0-ha2024` | `compat/ha-2024-support` |
-> | 2026 | `v2.0.0` | `main` |
+> | Home Assistant | HACS release tag |
+> | --- | --- |
+> | 2024 | `v2.0.0-ha2024` |
+> | 2026 | `v2.0.0` |
 >
-> Előzetes kiadáshoz a tag végére `-rc`, `-beta`, `-alpha` vagy `-dev` írható, opcionális sorszámmal (például `v2.0.0-ha2024-rc.1`); a GitHub Release-nél jelöld be a **Set as a pre-release** opciót, HACS-ban pedig engedélyezd a béta verziókat.
+> Előzetes kiadáshoz a tag végére `-rc`, vagy `-dev` írható, opcionális sorszámmal (például `v2.0.0-ha2024-rc.1`); a GitHub Release-nél jelöld be a **Set as a pre-release** opciót, HACS-ban pedig engedélyezd a béta verziókat.
 
 #### Kézzel
 
@@ -205,7 +205,7 @@ Egy „Érd” nevű helyszínnél, angol nyelvű Home Assistantben:
 | 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Mai napkelte és napnyugta |
 | 📅 `sensor.idokep_erd_warning_forecast` | A mai figyelmeztetés (pl. „Szeles nap”); az összes nap a `days` attribútumban |
 | 📍 `sensor.idokep_erd_station_temperature` | Választható állomási hőmérséklet (°C) |
-| 🌧️ `sensor.idokep_erd_station_precipitation` | Választható állomási 24 órás csapadék (mm) |
+| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Választható állomási 24 órás csapadék (mm) |
 | 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Választható állomási szélsebesség és széllökés (km/h); az irány és mérési idő attribútum |
 | 🌫️ `sensor.idokep_erd_<állomás>_pm10` / `_pm25` | Választható PM10- és PM2.5-órás átlag (µg/m³); az állomás, forrás és mérési idő attribútum |
 | 🌱 `sensor.idokep_erd_pollen_<típus>` | Választható, pollentípusonkénti szöveges érték (pl. `nincs`, `alacsony`, `közepes`, `magas`) |
