@@ -7,9 +7,11 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from math import isfinite
-from typing import Any
+from time import monotonic
+from typing import Any, TypeVar
 
 import aiohttp
 from bs4 import BeautifulSoup, Comment, Tag
@@ -68,6 +70,53 @@ _LOGGER = logging.getLogger(__name__)
 WEATHER_UPDATE_INTERVAL = timedelta(minutes=20)
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 BUDAPEST_TZ_NAME = "Europe/Budapest"
+MAP_DATA_CACHE_TTL = timedelta(minutes=1)
+_MAP_DATA_CACHE_KEY = f"{DOMAIN}_map_data_cache"
+_MapData = TypeVar("_MapData")
+
+
+class MapDataCache:
+    """Share recent parsed map responses across config-entry coordinators."""
+
+    def __init__(self) -> None:
+        """Initialize the cache."""
+        self._entries: dict[str, tuple[float, Any]] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    async def async_get(
+        self, key: str, fetch: Callable[[], Awaitable[_MapData]]
+    ) -> _MapData:
+        """Return a recent value or fetch it once for concurrent callers."""
+        cached = self._entries.get(key)
+        if cached and monotonic() - cached[0] < MAP_DATA_CACHE_TTL.total_seconds():
+            return cached[1]
+
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = self._entries.get(key)
+            if cached and monotonic() - cached[0] < MAP_DATA_CACHE_TTL.total_seconds():
+                return cached[1]
+
+            data = await fetch()
+            self._entries[key] = (monotonic(), data)
+            return data
+
+
+def get_map_data_cache(hass: HomeAssistant) -> MapDataCache:
+    """Return the Home Assistant-wide cache shared by map coordinators."""
+    return hass.data.setdefault(_MAP_DATA_CACHE_KEY, MapDataCache())
+
+
+async def _get_map_data(  # noqa: UP047
+    cache: MapDataCache | None,
+    key: str,
+    fetch: Callable[[], Awaitable[_MapData]],
+) -> _MapData:
+    """Use the shared map cache when available."""
+    if cache is None:
+        return await fetch()
+    return await cache.async_get(key, fetch)
+
 
 # Exceptions that mean "this part of the page is missing or has changed".
 PARSE_ERRORS = (AttributeError, IndexError, KeyError, TypeError, ValueError)
@@ -644,6 +693,17 @@ async def _fetch_page(
         return BeautifulSoup(await response.text(), "html.parser")
 
 
+async def _fetch_optional_page(
+    session: aiohttp.ClientSession, url: str, request_headers: dict | None
+) -> BeautifulSoup | None:
+    """Fetch an optional forecast page, preserving fallback data on network errors."""
+    try:
+        return await _fetch_page(session, url, request_headers)
+    except (aiohttp.ClientError, TimeoutError) as err:
+        _LOGGER.debug("Unable to fetch optional Időkép page %s: %s", url, err)
+        return None
+
+
 class StationDataError(ValueError):
     """A map page or its station data is missing or malformed."""
 
@@ -1002,13 +1062,19 @@ async def FetchSmogCityData(
     session: aiohttp.ClientSession,
     city: str,
     request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Fetch all current smog stations for one city."""
-    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+
+    async def fetch_stations() -> list[dict[str, Any]]:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+        return parse_smog_stations(soup)
+
+    stations = await _get_map_data(map_data_cache, "smog", fetch_stations)
     city_key = _location_match_key(city)
     return {
         station["id"]: station
-        for station in parse_smog_stations(soup)
+        for station in stations
         if _location_match_key(station["city"]) == city_key
     }
 
@@ -1078,20 +1144,29 @@ async def FetchPollenLocation(
     session: aiohttp.ClientSession,
     location: str,
     request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
 ) -> dict[str, Any] | None:
     """Find pollen data for one location on the Időkép map."""
-    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
-    return _find_pollen_location(parse_pollen_locations(soup), location)
+
+    async def fetch_locations() -> list[dict[str, Any]]:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
+        return parse_pollen_locations(soup)
+
+    locations = await _get_map_data(map_data_cache, "pollen", fetch_locations)
+    return _find_pollen_location(locations, location)
 
 
 async def FetchPollenData(
     session: aiohttp.ClientSession,
     location: str,
     request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
 ) -> dict[str, str]:
     """Fetch qualitative pollen levels without failing weather updates."""
     try:
-        pollen_location = await FetchPollenLocation(session, location, request_headers)
+        pollen_location = await FetchPollenLocation(
+            session, location, request_headers, map_data_cache
+        )
     except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
         _LOGGER.warning("Unable to fetch Időkép pollen data for %r: %s", location, err)
         return {}
@@ -1102,26 +1177,35 @@ async def FetchStationWeatherData(
     session: aiohttp.ClientSession,
     measurement_point: str,
     request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
 ) -> dict[str, dict[str, Any] | None]:
     """Read available temperature, precipitation and wind data for one station."""
     if not measurement_point.strip():
         raise UpdateFailed("A measurement point name or ID is required")
 
     sources = (
-        ("temperature", _fetch_station_temperature(session, request_headers)),
-        ("wind", _fetch_station_wind(session, request_headers)),
-        ("precipitation", _fetch_station_precipitation(session, request_headers)),
+        (
+            "temperature",
+            lambda: _fetch_station_temperature(session, request_headers),
+        ),
+        ("wind", lambda: _fetch_station_wind(session, request_headers)),
+        (
+            "precipitation",
+            lambda: _fetch_station_precipitation(session, request_headers),
+        ),
     )
 
-    async def fetch_source(source: str, request: Any) -> list[list[Any]] | None:
+    async def fetch_source(
+        source: str, fetch: Callable[[], Awaitable[list[list[Any]]]]
+    ) -> list[list[Any]] | None:
         try:
-            return await request
+            return await _get_map_data(map_data_cache, f"station_{source}", fetch)
         except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
             _LOGGER.warning("Unable to fetch Időkép %s station data: %s", source, err)
             return None
 
     results = await asyncio.gather(
-        *(fetch_source(source, request) for source, request in sources)
+        *(fetch_source(source, fetch) for source, fetch in sources)
     )
     rows_by_source: dict[str, list[list[Any]]] = {}
     for (source, _), result in zip(sources, results, strict=True):
@@ -1237,25 +1321,33 @@ async def FetchWeatherData(
     _LOGGER.debug("Fetching data for location: %s", location)
     now = datetime.now(budapest_tz)
 
-    current_page = await _fetch_page(
-        session, f"{BASE_IDOKEP_URL}/idojaras/{location}", request_headers
-    )
+    current_url = f"{BASE_IDOKEP_URL}/idojaras/{location}"
+    hourly_url = f"{BASE_IDOKEP_URL}/elorejelzes/{location}"
+    if forecast_days > DEFAULT_FORECAST_DAYS:
+        current_page, hourly_page, month_page = await asyncio.gather(
+            _fetch_page(session, current_url, request_headers),
+            _fetch_page(session, hourly_url, request_headers),
+            _fetch_optional_page(
+                session, f"{BASE_IDOKEP_URL}/30napos/{location}", request_headers
+            ),
+        )
+    else:
+        current_page, hourly_page = await asyncio.gather(
+            _fetch_page(session, current_url, request_headers),
+            _fetch_page(session, hourly_url, request_headers),
+        )
+        month_page = None
+
     resolved_location = parse_location_name(current_page)
     sunrise, sunset = _parse_sun_times(current_page, now.date(), budapest_tz)
     current = _parse_current(current_page, now, sunrise, sunset)
     daily = _parse_daily(current_page, now.date(), budapest_tz, local_tz)
 
-    hourly_page = await _fetch_page(
-        session, f"{BASE_IDOKEP_URL}/elorejelzes/{location}", request_headers
-    )
     hourly = _parse_hourly(hourly_page, now, budapest_tz, local_tz, sunrise, sunset)
     alerts = _parse_alerts(current_page, hourly_page)
     hazards = _parse_hazards(current_page)
 
-    if forecast_days > DEFAULT_FORECAST_DAYS:
-        month_page = await _fetch_page(
-            session, f"{BASE_IDOKEP_URL}/30napos/{location}", request_headers
-        )
+    if month_page is not None:
         # Keep the 15 days if the 30-day page can't be read.
         daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
@@ -1369,6 +1461,7 @@ class StationUpdateCoordinator(DataUpdateCoordinator):
         """Initialize coordinator."""
         self._measurement_point = entry.data[CONF_MEASUREMENT_POINT]
         self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
         super().__init__(
             hass,
             _LOGGER,
@@ -1390,6 +1483,7 @@ class StationUpdateCoordinator(DataUpdateCoordinator):
                 async_get_clientsession(self.hass),
                 self._measurement_point,
                 self.request_headers,
+                self.map_data_cache,
             )
         except (aiohttp.ClientError, TimeoutError, UpdateFailed) as err:
             raise UpdateFailed(
@@ -1407,6 +1501,7 @@ class SmogUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the smog coordinator."""
         self._city = entry.data[CONF_SMOG_CITY]
         self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
         super().__init__(
             hass,
             _LOGGER,
@@ -1424,6 +1519,7 @@ class SmogUpdateCoordinator(DataUpdateCoordinator):
                 async_get_clientsession(self.hass),
                 self._city,
                 self.request_headers,
+                self.map_data_cache,
             )
         except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
             raise UpdateFailed(
@@ -1441,6 +1537,7 @@ class PollenUpdateCoordinator(DataUpdateCoordinator):
         """Initialize the pollen coordinator."""
         self._city = entry.data[CONF_POLLEN_CITY]
         self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
         super().__init__(
             hass,
             _LOGGER,
@@ -1457,6 +1554,7 @@ class PollenUpdateCoordinator(DataUpdateCoordinator):
             async_get_clientsession(self.hass),
             self._city,
             self.request_headers,
+            self.map_data_cache,
         )
         return {
             ATTR_API_POLLEN_SENSORS: values,
