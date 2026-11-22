@@ -6,108 +6,18 @@
 
 **Weather, forecasts and weather alerts from [idokep.hu](https://www.idokep.hu) for places in Hungary**
 
+
+<img width="1286" height="527" alt="Képernyőkép 2026-11-21 220200" src="https://github.com/user-attachments/assets/efe55f26-d4ad-4e1f-aa2b-9030066e48eb" />
+
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5?logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz)
 [![Release](https://img.shields.io/github/v/release/rinyakok/homeassistant_idokep?logo=github)](https://github.com/rinyakok/homeassistant_idokep/releases)
 [![CI](https://github.com/rinyakok/homeassistant_idokep/actions/workflows/ci.yml/badge.svg)](https://github.com/rinyakok/homeassistant_idokep/actions/workflows/ci.yml)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.11%2B-18BCF2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io)
 [![License: MIT](https://img.shields.io/github/license/rinyakok/homeassistant_idokep)](LICENSE)
 
-🇬🇧 English summary below &nbsp;·&nbsp; 🇭🇺 **[Részletes magyar leírás lent ↓](#magyar)**
+🇭🇺 **[Részletes magyar leírás lent ↓](#magyar)** &nbsp;·&nbsp; 🇬🇧 [English summary ↓](#english)
 
 </div>
-
-> [!NOTE]
-> 🇬🇧 This page starts with a short English summary. **The full documentation is in Hungarian: [Magyar dokumentáció ↓](#magyar)**
->
-> 🇭🇺 Az oldal elején egy rövid angol összefoglaló áll. **A részletes leírás magyarul lent található: [Magyar dokumentáció ↓](#magyar)**
-
----
-
-## 🇬🇧 English summary
-
-### ✨ Features
-
-| Feature | What you get |
-|---|---|
-| 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
-| 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
-| 📍 **Map station sensors** | Add any number of stations as separate entries/devices; each has temperature, 24-hour precipitation, wind speed and gust sensors |
-| 🌫️ **Smog sensors** | Add a separate entry and select an available city; its PM10 and PM2.5 station readings appear as sensors |
-| 🌱 **Pollen sensors** | Add a separate entry and select an available city; qualitative pollen levels appear as sensors |
-| 🌧️ **Radar image and stream** | Add one separate global entry for the latest radar image and a camera stream cycling through images retained for up to one hour |
-| ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
-| ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
-| 📍 **Many places** | Any number of places, one device per place |
-| 🗣️ **Two languages** | English and Hungarian user interface |
-
-### 📦 Installation (HACS)
-
-This integration is in the **HACS default list**, no custom repository needed.
-
-1. Open **HACS**, search for **Időkép** and open **Időkép Weather Component**.
-2. Select **Download**, then restart Home Assistant.
-
-![HACS](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
-
-Requires Home Assistant **2024.1** or newer. HACS cannot select a release based on the HA version, so choose the matching release manually:
-
-| Home Assistant | HACS release tag |
-| --- | --- |
-| 2024 | `v2.0.0-ha2024` |
-| 2026 | `v2.0.0` |
-
-For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g. `v2.0.0-ha2024-rc.1`), and mark the GitHub release as a pre-release. HACS beta versions must be enabled to install it. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
-
-### ⚙️ Setup
-
-1. **Settings → Devices & services → Add integration → Időkép**.
-2. Choose **Weather location** and type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
-3. To add map measurements, add Időkép again, choose **Map station sensors**, and select an available station from the dropdown. Repeat to add more stations.
-4. To add smog or pollen readings, add Időkép again, choose **Smog sensors** or **Pollen sensors**, then select a city from the map's available cities. Leaving the city empty cancels the setup.
-
-- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days.
-- Each station entry has its own update interval, configurable from 5 minutes to 1 hour in 5-minute steps (default: 20 minutes).
-- Existing location entries that used map station sensors need the station added again as a separate entry; the old location-level station sensors are no longer created.
-- ✏️ **Reconfigure** changes the place; entity IDs stay the same.
-- 🌧️ Add **Időkép radar** separately from the integration menu (**Radar image and stream**). Only one global radar entry can be added; it provides the latest-image entity and camera stream. The image history fills gradually after startup.
-
-### 🧩 Entities (for a place called Érd)
-
-| Entity | Description |
-|---|---|
-| 🖼️ `image.idokep_radar_latest_radar_image` | Latest static Időkép radar image, shared by all places |
-| 🎞️ `camera.idokep_radar_radar_image_stream` | Cycles through radar images downloaded in the previous hour; history fills for up to an hour after startup |
-| 🌦️ `weather.idokep_erd` | Current weather; daily and hourly forecast via `weather.get_forecasts` |
-| 🌡️ `sensor.idokep_erd_temperature` | Temperature (°C) |
-| ☁️ `sensor.idokep_erd_condition` | Condition, e.g. `rainy` |
-| 🇭🇺 `sensor.idokep_erd_condition_hungarian` | Condition as written on idokep.hu, e.g. "Erősen felhős" |
-| 📝 `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
-| 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
-| 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
-| 📍 `sensor.idokep_erd_station_temperature` | Temperature (°C) from the separately added Érd station device |
-| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Station 24-hour precipitation (mm) |
-| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Station wind speed and gust (km/h); direction and measurement time are attributes |
-| 🌫️ Smog-entry sensors | PM10 and PM2.5 hourly averages for stations in the selected city (µg/m³); station, source and measurement time are attributes |
-| 🌱 Pollen-entry sensors | Qualitative level (`nincs`, `alacsony`, `közepes`, etc.) for each pollen type in the selected city |
-| ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
-| 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
-| ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm in the current or next hour |
-| 🔌 `binary_sensor.idokep_erd_connection` | Diagnostic: off when idokep.hu can't be reached |
-
-Entity IDs follow the Home Assistant language at the time the entity is created. The examples are for English.
-
-### 🔄 Switching from FabianGabor/HA-Idokep
-
-Both use the `idokep` domain, so only one can be installed.
-
-- **Home Assistant 2026.11 or newer** (HACS is now the built-in **Marketplace**): the Marketplace removes HA-Idokep only together with its integration entries. Write down your old entity IDs, use **Delete and uninstall** on HA-Idokep, install this integration, restart, add your places again, then rename the new entities to the old entity IDs. History and long-term statistics continue under the old IDs.
-- **Older Home Assistant with HACS:** remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same.
-
-➡️ [Step-by-step guide (Hungarian)](#atallas)
-
-### 🚧 Limits
-
-idokep.hu has no public API. Weather, smog and pollen data are read every 20 minutes; each map station has an independent, configurable 5-minute-to-1-hour update interval. A change on the website can break parts of the integration. Add map stations as separate entries by selecting them from the available-stations dropdown. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
 
 ---
 
@@ -144,7 +54,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 |---|---|
 | 🌦️ **Weather entitás** | Aktuális időjárás, 15 napos (választhatóan 30 napos) napi és 36 órás óránkénti előrejelzés: hőmérséklet, szél, csapadék és csapadékesély |
 | 🌡️ **Szenzorok** | Hőmérséklet, időjárási állapot (az idokep.hu magyar szövegével is), rövid szöveges előrejelzés, napkelte, napnyugta, figyelmeztető előrejelzés |
-| 📍 **Térképes állomásszenzorok** | Tetszőleges számú, külön bejegyzésként és eszközként felvett állomás hőmérséklet-, 24 órás csapadék-, szélsebesség- és széllökésadatai |
+| 📍 **Időjárás-állomás adatok** | Tetszőleges számú, külön bejegyzésként és eszközként felvett állomás hőmérséklet-, 24 órás csapadék-, szélsebesség- és széllökésadatai |
 | 🌫️ **Szmogszenzorok** | Külön bejegyzésként vehetők fel; a térképen elérhető település kiválasztása után annak mérőállomásai PM10- és PM2.5-szenzorokat adnak |
 | 🌱 **Pollenszenzorok** | Külön bejegyzésként vehetők fel; a térképen elérhető település kiválasztása után annak pollenszintjei szenzorokként jelennek meg |
 | 🌧️ **Radarkép és képsorozat** | Egy külön bejegyzésként felvehető globális legfrissebb radarkép és kamerastream, amely legfeljebb az elmúlt egy óra képeit játssza le |
@@ -158,7 +68,7 @@ Időjárási adatok, előrejelzés és időjárási riasztások az [idokep.hu](h
 
 ### 📦 Telepítés
 
-#### HACS-szal (ajánlott)
+#### HACS-szal vagy Homa Assistant Marketplacen (ajánlott)
 
 Az integráció benne van a **HACS alapértelmezett listájában**, egyéni tárolót (custom repository) nem kell felvenni.
 
@@ -171,10 +81,10 @@ Az integráció benne van a **HACS alapértelmezett listájában**, egyéni tár
 >
 > | Home Assistant | HACS release tag |
 > | --- | --- |
-> | 2024 | `v2.0.0-ha2024` |
-> | 2026 | `v2.0.0` |
+> | 2024 | `v3.0.0-ha2024` |
+> | 2026 | `v3.0.0` |
 >
-> Előzetes kiadáshoz a tag végére `-rc`, vagy `-dev` írható, opcionális sorszámmal (például `v2.0.0-ha2024-rc.1`); a GitHub Release-nél jelöld be a **Set as a pre-release** opciót, HACS-ban pedig engedélyezd a béta verziókat.
+> Előzetes kiadáshoz a tag végére `-rc`, vagy `-dev` írható, opcionális sorszámmal (például `v3.0.0-ha2024-rc.1`); a GitHub Release-nél jelöld be a **Set as a pre-release** opciót, HACS-ban pedig engedélyezd a béta verziókat.
 
 #### Kézzel
 
@@ -536,3 +446,96 @@ Hibát vagy hiányzó időjárási állapotot a [GitHub hibajegyek](https://gith
 Az adatok forrása: [idokep.hu](https://www.idokep.hu) &nbsp;·&nbsp; Data provided by idokep.hu
 
 </div>
+
+---
+
+<a id="english"></a>
+
+## 🇬🇧 English summary
+
+### ✨ Features
+
+| Feature | What you get |
+|---|---|
+| 🌦️ **Weather entity** | Current weather, 15-day (optionally 30-day) daily and 36-hour hourly forecast: temperature, wind, precipitation and precipitation chance |
+| 🌡️ **Sensors** | Temperature, condition (also as the Hungarian text), short text forecast, sunrise, sunset, warning forecast |
+| 📍 **Weather station data** | Add any number of stations as separate entries/devices; each has temperature, 24-hour precipitation, wind speed and gust sensors |
+| 🌫️ **Smog sensors** | Add a separate entry and select an available city; its PM10 and PM2.5 station readings appear as sensors |
+| 🌱 **Pollen sensors** | Add a separate entry and select an available city; qualitative pollen levels appear as sensors |
+| 🌧️ **Radar image and stream** | Add one separate global entry for the latest radar image and a camera stream cycling through images retained for up to one hour |
+| ⚠️ **Weather alerts** | Any alert, plus yellow, orange and red alert sensors with details |
+| ⛈️ **Storm warning** | Thunderstorm forecast for the current or next hour |
+| 📍 **Many places** | Any number of places, one device per place |
+| 🗣️ **Two languages** | English and Hungarian user interface |
+
+### 📦 Installation (HACS)
+
+This integration is in the **HACS default list**, no custom repository needed.
+
+1. Open **HACS**, search for **Időkép** and open **Időkép Weather Component**.
+2. Select **Download**, then restart Home Assistant.
+
+![HACS](https://github.com/user-attachments/assets/3d409403-e481-4b48-a9b8-7c2794d578a1)
+
+Requires Home Assistant **2024.1** or newer. HACS cannot select a release based on the HA version, so choose the matching release manually:
+
+| Home Assistant | HACS release tag |
+| --- | --- |
+| 2024 | `v3.0.0-ha2024` |
+| 2026 | `v3.0.0` |
+
+For pre-releases, append `-rc`, or `-dev`, optionally followed by a number (e.g. `v3<img width="1286" height="527" alt="Képernyőkép 2026-11-21 220200" src="https://github.com/user-attachments/assets/8bebc02d-8df5-457f-b8ad-cfc718d80d41" />
+.0.0-ha2024-rc.1`), and mark the GitHub release as a pre-release. HACS beta versions must be enabled to install it. Manual installation: copy `custom_components/idokep` to `<config>/custom_components` and restart.
+
+### ⚙️ Setup
+
+1. **Settings → Devices & services → Add integration → Időkép**.
+2. Choose **Weather location** and type the place name as written on idokep.hu, e.g. **Pécs**. Accents are optional: `erd` is saved as `Érd`.
+3. To add map measurements, add Időkép again, choose **Map station sensors**, and select an available station from the dropdown. Repeat to add more stations.
+4. To add smog or pollen readings, add Időkép again, choose **Smog sensors** or **Pollen sensors**, then select a city from the map's available cities. Leaving the city empty cancels the setup.
+
+- 🔧 **Options** (gear icon): daily forecast of 15 days (default) or 30 days.
+- Each station entry has its own update interval, configurable from 5 minutes to 1 hour in 5-minute steps (default: 20 minutes).
+- Existing location entries that used map station sensors need the station added again as a separate entry; the old location-level station sensors are no longer created.
+- ✏️ **Reconfigure** changes the place; entity IDs stay the same.
+- 🌧️ Add **Időkép radar** separately from the integration menu (**Radar image and stream**). Only one global radar entry can be added; it provides the latest-image entity and camera stream. The image history fills gradually after startup.
+
+### 🧩 Entities (for a place called Érd)
+
+| Entity | Description |
+|---|---|
+| 🖼️ `image.idokep_radar_latest_radar_image` | Latest static Időkép radar image, shared by all places |
+| 🎞️ `camera.idokep_radar_radar_image_stream` | Cycles through radar images downloaded in the previous hour; history fills for up to an hour after startup |
+| 🌦️ `weather.idokep_erd` | Current weather; daily and hourly forecast via `weather.get_forecasts` |
+| 🌡️ `sensor.idokep_erd_temperature` | Temperature (°C) |
+| ☁️ `sensor.idokep_erd_condition` | Condition, e.g. `rainy` |
+| 🇭🇺 `sensor.idokep_erd_condition_hungarian` | Condition as written on idokep.hu, e.g. "Erősen felhős" |
+| 📝 `sensor.idokep_erd_short_forecast` | Short text forecast, e.g. "Kettősfronti hatás várható" |
+| 🌅 `sensor.idokep_erd_sunrise` / 🌇 `_sunset` | Today's sunrise and sunset |
+| 📅 `sensor.idokep_erd_warning_forecast` | Today's warning note, e.g. "Szeles nap"; all days in the `days` attribute |
+| 📍 `sensor.idokep_erd_station_temperature` | Temperature (°C) from the separately added Érd station device |
+| 🌧️ `sensor.idokep_erd_station_precipitation_24_h` | Station 24-hour precipitation (mm) |
+| 💨 `sensor.idokep_erd_station_wind_speed` / `_wind_gust` | Station wind speed and gust (km/h); direction and measurement time are attributes |
+| 🌫️ Smog-entry sensors | PM10 and PM2.5 hourly averages for stations in the selected city (µg/m³); station, source and measurement time are attributes |
+| 🌱 Pollen-entry sensors | Qualitative level (`nincs`, `alacsony`, `közepes`, etc.) for each pollen type in the selected city |
+| ⚠️ `binary_sensor.idokep_erd_weather_alert` | Any weather alert; details in the attributes |
+| 🟡 🟠 🔴 `binary_sensor.idokep_erd_yellow_alert` / `_orange_alert` / `_red_alert` | Alert of that level |
+| ⛈️ `binary_sensor.idokep_erd_storm_in_the_next_hour` | Thunderstorm in the current or next hour |
+| 🔌 `binary_sensor.idokep_erd_connection` | Diagnostic: off when idokep.hu can't be reached |
+
+Entity IDs follow the Home Assistant language at the time the entity is created. The examples are for English.
+
+### 🔄 Switching from FabianGabor/HA-Idokep
+
+Both use the `idokep` domain, so only one can be installed.
+
+- **Home Assistant 2026.11 or newer** (HACS is now the built-in **Marketplace**): the Marketplace removes HA-Idokep only together with its integration entries. Write down your old entity IDs, use **Delete and uninstall** on HA-Idokep, install this integration, restart, add your places again, then rename the new entities to the old entity IDs. History and long-term statistics continue under the old IDs.
+- **Older Home Assistant with HACS:** remove HA-Idokep in HACS but **keep its integration entries**, install this integration and restart. The entries are taken over and the entity IDs stay the same.
+
+➡️ [Step-by-step guide (Hungarian)](#atallas)
+
+### 🚧 Limits
+
+idokep.hu has no public API. Weather, smog and pollen data are read every 20 minutes; each map station has an independent, configurable 5-minute-to-1-hour update interval. A change on the website can break parts of the integration. Add map stations as separate entries by selecting them from the available-stations dropdown. Different stations may not provide every measurement, and the page's map formats can change. 🐞 Please report problems in the [issue tracker](https://github.com/rinyakok/homeassistant_idokep/issues).
+
+---
