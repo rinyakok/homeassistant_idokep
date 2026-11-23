@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from datetime import timedelta
+
 import aiohttp
 import pytest
 from homeassistant import config_entries
@@ -12,8 +15,27 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.idokep import DATA_RUNTIME, get_entry_data
-from custom_components.idokep.const import DOMAIN
+from custom_components.idokep import (
+    DATA_RADAR,
+    DATA_RUNTIME,
+    get_entry_data,
+    get_pollen_data,
+    get_smog_data,
+    get_station_data,
+)
+from custom_components.idokep.const import (
+    CONF_FORECAST_DAYS,
+    CONF_MEASUREMENT_POINT,
+    CONF_POLLEN_CITY,
+    CONF_POLLEN_CONFIG_ENTRY,
+    CONF_RADAR_CONFIG_ENTRY,
+    CONF_SMOG_CITY,
+    CONF_SMOG_CONFIG_ENTRY,
+    CONF_STATION_CONFIG_ENTRY,
+    CONF_STATION_NAME,
+    CONF_STATION_UPDATE_INTERVAL,
+    DOMAIN,
+)
 
 from .conftest import FIXTURE_TIME, FakeClientSession, load_fixture, pages_with_alerts
 
@@ -32,13 +54,69 @@ def _device(hass: HomeAssistant, identifier: str) -> dr.DeviceEntry:
     return device
 
 
-def _entry(location: str = "Érd", unique_id: str = "erd") -> MockConfigEntry:
+def _entry(
+    location: str = "Érd",
+    unique_id: str = "erd",
+    options: dict | None = None,
+) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         title=location,
         data={"location": location},
+        options=options or {},
         unique_id=unique_id,
         version=2,
+    )
+
+
+def _station_map_pages() -> dict[str, str]:
+    """Return saved-format map data for two measurement points."""
+    return {
+        "/homerseklet_hu.json": json.dumps(
+            {
+                "meresek": [
+                    [47.5, 19.1, 12.5, 1795198921, "Érd", "amator", "station-7"],
+                    [47.68, 17.63, 9.0, 1795198921, "Győr", "amator", "station-8"],
+                ]
+            }
+        ),
+        "/szel": (
+            "<script>window.szelterkep = "
+            '{"allomasok":[[47.5,19.1,180,4,6,1795198921,'
+            '"Érd","Automata","station-7",0],'
+            "[47.68,17.63,90,3,5,1795198921,"
+            '"Győr","Automata","station-8",0]]};</script>'
+        ),
+        "/csapadek": (
+            "<script>(window.csapadekTerkepek = "
+            "window.csapadekTerkepek || []).push("
+            '{"allomasok":[[1795198921,47.5,19.1,2.4,'
+            '"Érd","station-7",3.1],'
+            "[1795198921,47.68,17.63,1.1,"
+            '"Győr","station-8",1.3]]});</script>'
+        ),
+    }
+
+
+def _smog_map_page() -> str:
+    """Return a live-format smog map with two pollutants for Érd."""
+    return (
+        "<script>window.szmogTerkepek = [];"
+        'window.szmogTerkepek.push({"allomasok":['
+        '["erd-1",47.5,19.1,"Érd","Érd",1795198921,52,18,"OLM"]'
+        "]});</script>"
+    )
+
+
+def _pollen_map_page() -> str:
+    """Return the image-map tooltip data for Érd."""
+    return (
+        '<map name="pollen">'
+        "<area onmouseover='Tip(\"<strong>Érd</strong><br/>"
+        "<font>Pázsitfűfélék: alacsony</font><br/>"
+        "<font>Útifű: nincs</font><br/>"
+        "<font>Parlagfű: közepes</font>\")'>"
+        "</map>"
     )
 
 
@@ -50,13 +128,102 @@ async def _setup(hass: HomeAssistant, entry: MockConfigEntry | None = None):
     return entry
 
 
+async def test_radar_entry_is_added_separately_and_only_once(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Radar sensors are explicitly added, remain global and cannot be duplicated."""
+    await _setup(hass)
+    await _setup(hass, _entry("Győr", "gyor"))
+
+    radar_entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+    ]
+    assert radar_entries == []
+
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert flow["type"] is FlowResultType.MENU
+    assert "radar" in flow["menu_options"]
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {"next_step_id": "radar"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+    radar_entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+    ]
+    assert len(radar_entries) == 1
+    radar_entry = radar_entries[0]
+    assert radar_entry.unique_id == "idokep-radar"
+    assert radar_entry.state is ConfigEntryState.LOADED
+    assert len(hass.data[DATA_RADAR][radar_entry.entry_id].data) == 1
+
+    registry = er.async_get(hass)
+    entities = er.async_entries_for_config_entry(registry, radar_entry.entry_id)
+    assert {entity.domain for entity in entities} == {"camera", "image"}
+    assert len(entities) == 2
+
+    duplicate = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_IMPORT},
+        data={CONF_RADAR_CONFIG_ENTRY: True},
+    )
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
+
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert "radar" not in flow["menu_options"]
+
+
 async def _start_user_flow(hass: HomeAssistant, location: str):
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "location"}
+    )
     assert result["type"] is FlowResultType.FORM
     return await hass.config_entries.flow.async_configure(
         result["flow_id"], {"location": location}
+    )
+
+
+async def _start_station_flow(hass: HomeAssistant, station_option: str):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "station"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MEASUREMENT_POINT: station_option}
+    )
+
+
+async def _start_city_flow(hass: HomeAssistant, sensor_type: str, city: str):
+    """Start a standalone smog or pollen city entry flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": sensor_type}
+    )
+    assert result["type"] is FlowResultType.FORM
+    key = CONF_SMOG_CITY if sensor_type == "smog" else CONF_POLLEN_CITY
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {key: city}
     )
 
 
@@ -189,6 +356,101 @@ async def test_user_flow_uses_idokep_spelling(hass: HomeAssistant, fake_idokep) 
     assert hass.states.get("weather.idokep_erd") is not None
 
 
+async def test_smog_city_entry_creates_independent_sensors(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """A selected smog city creates its own device and station sensors."""
+    fake_idokep.pages["/szmog"] = _smog_map_page()
+    result = await _start_city_flow(hass, "smog", "Érd")
+    entry = result["result"]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.data == {CONF_SMOG_CONFIG_ENTRY: True, CONF_SMOG_CITY: "Érd"}
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    coordinator = get_smog_data(hass, entry).coordinator
+    assert list(coordinator.data["smog_sensors"]) == ["erd-1"]
+    registry = er.async_get(hass)
+    pm10_entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm10"
+    )
+    pm25_entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_smog_erd-1_pm25"
+    )
+    assert float(hass.states.get(pm10_entity_id).state) == 52
+    assert float(hass.states.get(pm25_entity_id).state) == 18
+    pm10 = hass.states.get(pm10_entity_id)
+    assert pm10.attributes["station_id"] == "erd-1"
+    assert pm10.attributes["source"] == "OLM"
+
+
+async def test_pollen_city_entry_creates_independent_sensors(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """A selected pollen city creates its own category sensors."""
+    fake_idokep.pages["/pollen"] = _pollen_map_page()
+    result = await _start_city_flow(hass, "pollen", "Érd")
+    entry = result["result"]
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.data == {CONF_POLLEN_CONFIG_ENTRY: True, CONF_POLLEN_CITY: "Érd"}
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    coordinator = get_pollen_data(hass, entry).coordinator
+    assert coordinator.data["pollen_sensors"] == {
+        "grass": "alacsony",
+        "plantain": "nincs",
+        "ragweed": "közepes",
+    }
+    registry = er.async_get(hass)
+    grass_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_pollen_grass"
+    )
+    assert hass.states.get(grass_id).state == "alacsony"
+    assert hass.states.get(grass_id).attributes["location"] == "Érd"
+
+
+async def test_pollen_update_failure_marks_sensors_unavailable(
+    hass: HomeAssistant, fake_idokep, freezer
+) -> None:
+    """A failed pollen request is reflected by coordinator/entity availability."""
+    fake_idokep.pages["/pollen"] = _pollen_map_page()
+    result = await _start_city_flow(hass, "pollen", "Érd")
+    entry = result["result"]
+    await hass.async_block_till_done()
+
+    coordinator = get_pollen_data(hass, entry).coordinator
+    freezer.tick(delta=timedelta(minutes=2))
+    fake_idokep.error = aiohttp.ClientConnectionError("no network")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    grass_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_pollen_grass"
+    )
+    assert coordinator.last_update_success is False
+    assert hass.states.get(grass_id).state == "unavailable"
+
+
+async def test_empty_city_selection_does_not_create_entry_or_start_polling(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """An empty optional selector aborts before setting up a data coordinator."""
+    fake_idokep.pages["/pollen"] = _pollen_map_page()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "pollen"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "city_not_selected"
+    assert not hass.config_entries.async_entries(DOMAIN)
+    assert sum(url.endswith("/pollen") for url in fake_idokep.requested) == 1
+
+
 async def test_user_flow_place_unknown_to_idokep(hass: HomeAssistant) -> None:
     """idokep.hu shows Budapest for unknown places; the flow says so."""
     budapest = load_fixture("idojaras.html").replace(
@@ -268,7 +530,7 @@ async def test_reconfigure_keeps_entity_ids(hass: HomeAssistant, fake_idokep) ->
     assert weather.unique_id == f"{entry.entry_id}_weather_gyor"
     assert len(er.async_entries_for_config_entry(registry, entry.entry_id)) == 14
     assert hass.states.get("weather.idokep_erd") is not None
-    assert fake_idokep.requested[-1].endswith("/elorejelzes/Győr")
+    assert any(url.endswith("/elorejelzes/Győr") for url in fake_idokep.requested)
 
 
 async def test_reconfigure_to_existing_location(
@@ -448,6 +710,115 @@ async def test_options_30_day_forecast(hass: HomeAssistant, fake_idokep) -> None
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"forecast_days": 30}
+    assert entry.options[CONF_FORECAST_DAYS] == 30
+    assert "station_sensors_enabled" not in entry.options
+    assert "measurement_point" not in entry.options
     assert len(await _daily_forecast(hass)) == 30
     assert any("/30napos/" in url for url in fake_idokep.requested)
+
+
+async def test_station_entries_create_separate_station_devices(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """Multiple map stations can be added independently of a weather location."""
+    fake_idokep.pages.update(_station_map_pages())
+
+    location = await _setup(
+        hass,
+        _entry(
+            options={
+                "station_sensors_enabled": True,
+                "measurement_point": "Érd",
+            }
+        ),
+    )
+    entity_registry = er.async_get(hass)
+    assert (
+        entity_registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{location.entry_id}_station_temperature"
+        )
+        is None
+    )
+    assert not any("/terkep/" in url for url in fake_idokep.requested)
+
+    erd_result = await _start_station_flow(hass, "Érd (station-7)")
+    assert erd_result["type"] is FlowResultType.CREATE_ENTRY
+    erd_entry = erd_result["result"]
+    await hass.async_block_till_done()
+
+    gyor_result = await _start_station_flow(hass, "Győr (station-8)")
+    assert gyor_result["type"] is FlowResultType.CREATE_ENTRY
+    gyor_entry = gyor_result["result"]
+    await hass.async_block_till_done()
+
+    assert erd_entry.entry_id != gyor_entry.entry_id
+    assert erd_entry.unique_id != gyor_entry.unique_id
+    assert _device(hass, erd_entry.entry_id).id != _device(hass, gyor_entry.entry_id).id
+    assert hass.states.get("sensor.idokep_erd_station_temperature").state == "12.5"
+    assert hass.states.get("sensor.idokep_gyor_station_temperature").state == "9.0"
+    assert get_station_data(hass, erd_entry).coordinator.update_interval == timedelta(
+        minutes=20
+    )
+
+    duplicate = await _start_station_flow(hass, "Érd (station-7)")
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
+
+    erd_options = await hass.config_entries.options.async_init(erd_entry.entry_id)
+    assert erd_options["type"] is FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(
+        erd_options["flow_id"], {CONF_STATION_UPDATE_INTERVAL: "5"}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert erd_entry.options[CONF_STATION_UPDATE_INTERVAL] == 5
+
+    gyor_options = await hass.config_entries.options.async_init(gyor_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        gyor_options["flow_id"], {CONF_STATION_UPDATE_INTERVAL: "60"}
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert gyor_entry.options[CONF_STATION_UPDATE_INTERVAL] == 60
+
+    assert get_station_data(hass, erd_entry).coordinator.update_interval == timedelta(
+        minutes=5
+    )
+    assert get_station_data(hass, gyor_entry).coordinator.update_interval == timedelta(
+        hours=1
+    )
+
+
+async def test_station_flow_selects_an_available_station(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """The station dropdown stores the selected map station's ID and name."""
+    fake_idokep.pages.update(_station_map_pages())
+    result = await _start_station_flow(hass, "Érd (station-7)")
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Érd"
+    assert result["data"] == {
+        CONF_STATION_CONFIG_ENTRY: True,
+        CONF_MEASUREMENT_POINT: "station-7",
+        CONF_STATION_NAME: "Érd",
+    }
+
+
+async def test_station_flow_rejects_an_unavailable_selection(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """The dropdown schema rejects a station outside its options."""
+    import voluptuous as vol
+
+    fake_idokep.pages.update(_station_map_pages())
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "station"}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    with pytest.raises(vol.Invalid):
+        result["data_schema"]({CONF_MEASUREMENT_POINT: "missing-station"})

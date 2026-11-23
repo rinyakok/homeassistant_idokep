@@ -3,3 +3,5 @@ pytest-homeassistant-custom-component==0.13.375
 ruff==0.17.5
 # Runtime requirement of the integration (see manifest.json).
 beautifulsoup4==4.15.0
+# Required by Home Assistant's camera component during test collection.
+PyTurboJPEG==1.8.3

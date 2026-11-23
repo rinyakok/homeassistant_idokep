@@ -2,6 +2,16 @@
   "config": {
     "step": {
       "user": {
+        "title": "Időkép adatforrás hozzáadása",
+        "menu_options": {
+          "location": "Időjárási helyszín",
+          "station": "Térképes állomásszenzorok",
+          "smog": "Szmogszenzorok",
+          "pollen": "Pollenszenzorok",
+          "radar": "Radarkép és -stream"
+        }
+      },
+      "location": {
         "title": "Időkép helyszín hozzáadása",
         "description": "Add meg a település nevét úgy, ahogy az idokep.hu-n szerepel, például Érd vagy Balatonfüred.",
         "data": {
@@ -9,6 +19,36 @@
         },
         "data_description": {
           "location": "Település neve. Az ékezet elhagyható: az \"erd\" is Érdet jelenti."
+        }
+      },
+      "station": {
+        "title": "Térképes állomás hozzáadása",
+        "description": "Válassz egy elérhető állomást a legördülő listából. Minden állomás külön eszközként jelenik meg.",
+        "data": {
+          "measurement_point": "Állomás"
+        },
+        "data_description": {
+          "measurement_point": "A lista az Időkép térképein elérhető állomásokat tartalmazza."
+        }
+      },
+      "smog": {
+        "title": "Szmogszenzorok hozzáadása",
+        "description": "Válassz egy települést az Időkép szmogtérképén elérhetők közül. Üres mező esetén a hozzáadás megszakad.",
+        "data": {
+          "smog_city": "Település"
+        },
+        "data_description": {
+          "smog_city": "A kiválasztott település mérőállomásai külön szenzorokként jelennek meg."
+        }
+      },
+      "pollen": {
+        "title": "Pollenszenzorok hozzáadása",
+        "description": "Válassz egy települést az Időkép pollentérképén elérhetők közül. Üres mező esetén a hozzáadás megszakad.",
+        "data": {
+          "pollen_city": "Település"
+        },
+        "data_description": {
+          "pollen_city": "A kiválasztott település pollenszintjei külön szenzorokként jelennek meg."
         }
       },
       "reconfigure": {
@@ -25,11 +65,22 @@
     "error": {
       "cannot_connect": "Nem sikerült csatlakozni az idokep.hu-hoz. Próbáld újra később.",
       "location_not_found": "Ehhez a helyszínhez nincs időjárási adat az idokep.hu-n.",
-      "location_fallback": "Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: {shown}. Ellenőrizd az írásmódot."
+      "location_fallback": "Ezt a települést az idokep.hu nem ismeri, helyette ezt mutatja: {shown}. Ellenőrizd az írásmódot.",
+      "station_required": "Válassz egy állomást a listából."
     },
     "abort": {
-      "already_configured": "Ez a helyszín már hozzá van adva.",
-      "reconfigure_successful": "A helyszín módosult."
+      "already_configured": "Ez az adatforrás már hozzá van adva.",
+      "reconfigure_successful": "A helyszín módosult.",
+      "not_supported": "Ezt a beállítást az integráció automatikusan kezeli.",
+      "radar_no_options": "A globális radarbejegyzéshez nincs további beállítás.",
+      "sensor_no_options": "Ehhez a szenzorbejegyzéshez nincs beállítható opció.",
+      "map_unavailable": "Nem sikerült betölteni az Időkép térképét. Próbáld újra később.",
+      "no_smog_cities": "Nem található mérési adattal rendelkező település a szmogtérképen.",
+      "no_pollen_cities": "Nem található mérési adattal rendelkező település a pollentérképen.",
+      "city_not_selected": "Nem választottál települést, ezért nem jött létre szenzorbejegyzés.",
+      "city_not_available": "A kiválasztott település már nem érhető el a térképen.",
+      "no_stations": "Nem található állomás az Időkép térképein.",
+      "station_not_available": "A kiválasztott állomás már nem érhető el a térképeken."
     }
   },
   "entity": {
@@ -54,6 +105,42 @@
       },
       "warning_forecast": {
         "name": "Figyelmeztető előrejelzés"
+      },
+      "station_temperature": {
+        "name": "Állomási hőmérséklet"
+      },
+      "station_precipitation": {
+        "name": "Állomási csapadék (24 óra)"
+      },
+      "station_wind_speed": {
+        "name": "Állomási szélsebesség"
+      },
+      "station_wind_gust": {
+        "name": "Állomási széllökés"
+      },
+      "pollen_grass": {
+        "name": "Pázsitfűfélék pollenje"
+      },
+      "pollen_plantain": {
+        "name": "Útifű pollenje"
+      },
+      "pollen_nettle": {
+        "name": "Csalánfélék pollenje"
+      },
+      "pollen_hemp": {
+        "name": "Kenderfélék pollenje"
+      },
+      "pollen_goosefoot": {
+        "name": "Libatopfélék pollenje"
+      },
+      "pollen_ragweed": {
+        "name": "Parlagfű pollenje"
+      },
+      "pollen_mugwort": {
+        "name": "Üröm pollenje"
+      },
+      "pollen_mold": {
+        "name": "Gombaspóra"
       }
     },
     "binary_sensor": {
@@ -75,15 +162,32 @@
       "alert_red": {
         "name": "Piros riasztás"
       }
+    },
+    "image": {
+      "latest_radar_image": {
+        "name": "Legfrissebb radarkép"
+      }
+    },
+    "camera": {
+      "radar_image_stream": {
+        "name": "Radar képsorozat"
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Időkép beállítások",
-        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról.",
+        "description": "A 30 napos előrejelzéshez frissítésenként eggyel több oldalt kell letölteni az idokep.hu-ról. A térképes állomásokat, a szmog- és a pollenszenzorokat külön Időkép-bejegyzésként add hozzá.",
         "data": {
           "forecast_days": "Napi előrejelzés"
+        }
+      },
+      "station": {
+        "title": "Térképes állomás beállításai",
+        "description": "Állítsd be, milyen gyakran frissüljenek az állomás adatai. Az időköz minden állomásnál külön állítható.",
+        "data": {
+          "station_update_interval": "Frissítési időköz"
         }
       }
     }
@@ -93,6 +197,22 @@
       "options": {
         "15": "15 nap",
         "30": "30 nap"
+      }
+    },
+    "station_update_interval": {
+      "options": {
+        "5": "5 perc",
+        "10": "10 perc",
+        "15": "15 perc",
+        "20": "20 perc",
+        "25": "25 perc",
+        "30": "30 perc",
+        "35": "35 perc",
+        "40": "40 perc",
+        "45": "45 perc",
+        "50": "50 perc",
+        "55": "55 perc",
+        "60": "1 óra"
       }
     }
   }

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
-from datetime import date, datetime, time, timedelta, tzinfo
-from typing import Any
+import unicodedata
+from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from math import isfinite
+from time import monotonic
+from typing import Any, TypeVar
 
 import aiohttp
 from bs4 import BeautifulSoup, Comment, Tag
@@ -35,15 +41,26 @@ from .const import (
     ATTR_API_LOCATION,
     ATTR_API_NATIVE_TEMPERATURE,
     ATTR_API_NATIVE_TEMPERATURE_UNIT,
+    ATTR_API_POLLEN_LOCATION,
+    ATTR_API_POLLEN_SENSORS,
     ATTR_API_SHORT_FORECAST,
+    ATTR_API_SMOG_SENSORS,
+    ATTR_API_STATION_SENSORS,
     ATTR_API_SUNRISE,
     ATTR_API_SUNSET,
     BASE_IDOKEP_URL,
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
+    CONF_MEASUREMENT_POINT,
+    CONF_POLLEN_CITY,
+    CONF_SMOG_CITY,
+    CONF_STATION_NAME,
+    CONF_STATION_UPDATE_INTERVAL,
     DEFAULT_FORECAST_DAYS,
     DEFAULT_LOCATION,
+    DEFAULT_STATION_UPDATE_INTERVAL,
     DOMAIN,
+    POLLEN_CATEGORIES,
     USER_AGENT_TEMPLATE,
     entry_unique_id,
 )
@@ -53,9 +70,57 @@ _LOGGER = logging.getLogger(__name__)
 WEATHER_UPDATE_INTERVAL = timedelta(minutes=20)
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 BUDAPEST_TZ_NAME = "Europe/Budapest"
+MAP_DATA_CACHE_TTL = timedelta(minutes=1)
+_MAP_DATA_CACHE_KEY = f"{DOMAIN}_map_data_cache"
+_MapData = TypeVar("_MapData")
+
+
+class MapDataCache:
+    """Share recent parsed map responses across config-entry coordinators."""
+
+    def __init__(self) -> None:
+        """Initialize the cache."""
+        self._entries: dict[str, tuple[float, Any]] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    async def async_get(
+        self, key: str, fetch: Callable[[], Awaitable[_MapData]]
+    ) -> _MapData:
+        """Return a recent value or fetch it once for concurrent callers."""
+        cached = self._entries.get(key)
+        if cached and monotonic() - cached[0] < MAP_DATA_CACHE_TTL.total_seconds():
+            return cached[1]
+
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = self._entries.get(key)
+            if cached and monotonic() - cached[0] < MAP_DATA_CACHE_TTL.total_seconds():
+                return cached[1]
+
+            data = await fetch()
+            self._entries[key] = (monotonic(), data)
+            return data
+
+
+def get_map_data_cache(hass: HomeAssistant) -> MapDataCache:
+    """Return the Home Assistant-wide cache shared by map coordinators."""
+    return hass.data.setdefault(_MAP_DATA_CACHE_KEY, MapDataCache())
+
+
+async def _get_map_data(  # noqa: UP047
+    cache: MapDataCache | None,
+    key: str,
+    fetch: Callable[[], Awaitable[_MapData]],
+) -> _MapData:
+    """Use the shared map cache when available."""
+    if cache is None:
+        return await fetch()
+    return await cache.async_get(key, fetch)
+
 
 # Exceptions that mean "this part of the page is missing or has changed".
 PARSE_ERRORS = (AttributeError, IndexError, KeyError, TypeError, ValueError)
+TIMESTAMP_CONVERSION_ERRORS = (OverflowError, OSError, ValueError)
 
 weather_conditions = {
     "napos": "sunny",
@@ -628,6 +693,624 @@ async def _fetch_page(
         return BeautifulSoup(await response.text(), "html.parser")
 
 
+async def _fetch_optional_page(
+    session: aiohttp.ClientSession, url: str, request_headers: dict | None
+) -> BeautifulSoup | None:
+    """Fetch an optional forecast page, preserving fallback data on network errors."""
+    try:
+        return await _fetch_page(session, url, request_headers)
+    except (aiohttp.ClientError, TimeoutError) as err:
+        _LOGGER.debug("Unable to fetch optional Időkép page %s: %s", url, err)
+        return None
+
+
+class StationDataError(ValueError):
+    """A map page or its station data is missing or malformed."""
+
+
+def _json_number(value: Any) -> float | None:
+    """Return a finite JSON number, excluding booleans and missing values."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if isfinite(number) else None
+
+
+def _json_in_script(soup: BeautifulSoup, marker: str) -> dict[str, Any]:
+    """Read an object assigned to a JavaScript variable without executing it."""
+    decoder = json.JSONDecoder()
+    for script in soup.find_all("script"):
+        text = script.string or script.get_text()
+        marker_index = text.find(marker)
+        if marker_index < 0:
+            continue
+        equals_index = text.find("=", marker_index + len(marker))
+        if equals_index < 0:
+            continue
+        json_index = equals_index + 1
+        while json_index < len(text) and text[json_index].isspace():
+            json_index += 1
+        try:
+            value, _ = decoder.raw_decode(text, json_index)
+        except json.JSONDecodeError as err:
+            raise StationDataError(f"Invalid {marker} data") from err
+        if isinstance(value, dict):
+            return value
+        raise StationDataError(f"Unexpected {marker} data")
+    raise StationDataError(f"{marker} data not found")
+
+
+def _pushed_json_objects(soup: BeautifulSoup, marker: str) -> list[dict[str, Any]]:
+    """Read objects passed to a JavaScript array's push method."""
+    decoder = json.JSONDecoder()
+    objects = []
+    for script in soup.find_all("script"):
+        text = script.string or script.get_text()
+        cursor = 0
+        while (marker_index := text.find(marker, cursor)) >= 0:
+            push_index = text.find(".push(", marker_index + len(marker))
+            if push_index < 0:
+                break
+            json_index = push_index + len(".push(")
+            while json_index < len(text) and text[json_index].isspace():
+                json_index += 1
+            try:
+                value, end = decoder.raw_decode(text, json_index)
+            except json.JSONDecodeError as err:
+                raise StationDataError(f"Invalid {marker} data") from err
+            if isinstance(value, dict):
+                objects.append(value)
+            cursor = end
+    if not objects:
+        raise StationDataError(f"{marker} data not found")
+    return objects
+
+
+def _station_rows(data: Any, key: str) -> list[list[Any]]:
+    """Validate a station list embedded in map data."""
+    if not isinstance(data, dict) or not isinstance(data.get(key), list):
+        raise StationDataError(f"Map station list {key!r} is missing")
+    return data[key]
+
+
+def _station_query_key(value: str) -> str:
+    """Normalize a station name or ID, ignoring case and accents."""
+    decomposed = unicodedata.normalize("NFKD", value.strip().casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _find_station(
+    rows: list[list[Any]],
+    query: str,
+    *,
+    name_index: int,
+    id_index: int,
+    timestamp_index: int,
+) -> list[Any] | None:
+    """Find the freshest station matching its displayed name or ID."""
+    key = _station_query_key(query)
+    matches = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) <= max(
+            name_index, id_index, timestamp_index
+        ):
+            continue
+        name, station_id = row[name_index], row[id_index]
+        if key not in {
+            _station_query_key(value)
+            for value in (name, station_id)
+            if isinstance(value, str)
+        }:
+            continue
+        timestamp = _json_number(row[timestamp_index])
+        if timestamp is not None:
+            matches.append((timestamp, row))
+    return max(matches, key=lambda match: match[0])[1] if matches else None
+
+
+def _station_observation(
+    row: list[Any],
+    *,
+    value_index: int,
+    timestamp_index: int,
+    latitude_index: int,
+    longitude_index: int,
+    name_index: int,
+    id_index: int,
+    source_index: int | None = None,
+    extra: dict[str, float | None] | None = None,
+) -> dict[str, Any] | None:
+    """Convert one map station row into a Home Assistant-friendly record."""
+    required_index = max(
+        value_index,
+        timestamp_index,
+        latitude_index,
+        longitude_index,
+        name_index,
+        id_index,
+        source_index if source_index is not None else 0,
+    )
+    if len(row) <= required_index:
+        return None
+    value = _json_number(row[value_index])
+    timestamp = _json_number(row[timestamp_index])
+    latitude = _json_number(row[latitude_index])
+    longitude = _json_number(row[longitude_index])
+    if None in (value, timestamp, latitude, longitude):
+        return None
+    try:
+        measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
+    except TIMESTAMP_CONVERSION_ERRORS:
+        return None
+    observation = {
+        "value": value,
+        "measured_at": measured_at,
+        "station_name": row[name_index],
+        "station_id": row[id_index],
+        "source": row[source_index] if source_index is not None else "Időkép station",
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+    if extra:
+        observation.update(extra)
+    return observation
+
+
+async def _fetch_station_temperature(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch temperature station measurements from the live map JSON."""
+    url = f"{BASE_IDOKEP_URL}/terkep/homerseklet/homerseklet_hu.json"
+    async with session.get(
+        url, headers=request_headers, timeout=REQUEST_TIMEOUT
+    ) as response:
+        response.raise_for_status()
+        text = await response.text()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as err:
+        raise StationDataError("Temperature map returned invalid JSON") from err
+    return _station_rows(data, "meresek")
+
+
+async def _fetch_station_wind(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch wind station measurements embedded in the wind map page."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szel", request_headers)
+    return _station_rows(_json_in_script(soup, "window.szelterkep"), "allomasok")
+
+
+async def _fetch_station_precipitation(
+    session: aiohttp.ClientSession, request_headers: dict | None
+) -> list[list[Any]]:
+    """Fetch station measurements embedded in the precipitation map page."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/csapadek", request_headers)
+    maps = _pushed_json_objects(soup, "window.csapadekTerkepek")
+    rows = []
+    for map_data in maps:
+        rows.extend(_station_rows(map_data, "allomasok"))
+    return rows
+
+
+async def FetchStationChoices(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[dict[str, str]]:
+    """List unique stations available across the measurement maps."""
+    sources = (
+        (
+            "temperature",
+            _fetch_station_temperature(session, request_headers),
+            4,
+            6,
+        ),
+        ("wind", _fetch_station_wind(session, request_headers), 6, 8),
+        (
+            "precipitation",
+            _fetch_station_precipitation(session, request_headers),
+            4,
+            5,
+        ),
+    )
+    errors: list[Exception] = []
+
+    async def fetch_source(source: str, request: Any) -> list[list[Any]] | None:
+        try:
+            return await request
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            _LOGGER.warning("Unable to fetch Időkép %s station list: %s", source, err)
+            errors.append(err)
+            return None
+
+    results = await asyncio.gather(
+        *(fetch_source(source, request) for source, request, _, _ in sources)
+    )
+    if all(rows is None for rows in results):
+        raise StationDataError("Unable to load any map station list") from errors[0]
+
+    stations: dict[str, dict[str, str]] = {}
+    for (_, _, name_index, id_index), rows in zip(sources, results, strict=True):
+        if rows is None:
+            continue
+        for row in rows:
+            if not isinstance(row, list) or len(row) <= max(name_index, id_index):
+                continue
+            name, station_id = row[name_index], row[id_index]
+            if not isinstance(name, str) or not isinstance(station_id, str):
+                continue
+            name, station_id = name.strip(), station_id.strip()
+            if name and station_id:
+                stations.setdefault(station_id, {"id": station_id, "name": name})
+
+    return sorted(
+        stations.values(),
+        key=lambda station: (station["name"].casefold(), station["id"].casefold()),
+    )
+
+
+def _location_match_key(value: str) -> str:
+    """Normalize capitalization while keeping accents significant."""
+    return unicodedata.normalize("NFC", value.strip()).casefold()
+
+
+def parse_smog_stations(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Parse current station measurements embedded in the smog-map page."""
+    maps = _pushed_json_objects(soup, "window.szmogTerkepek")
+    stations: dict[str, dict[str, Any]] = {}
+    timestamps: dict[str, float] = {}
+    for map_data in maps:
+        for row in _station_rows(map_data, "allomasok"):
+            if not isinstance(row, list) or len(row) < 9:
+                continue
+            station_id = row[0]
+            city, name = row[3], row[4]
+            timestamp = _json_number(row[5])
+            pm10 = _json_number(row[6])
+            latitude = _json_number(row[1])
+            longitude = _json_number(row[2])
+            if (
+                isinstance(station_id, bool)
+                or not isinstance(station_id, (str, int))
+                or not isinstance(city, str)
+                or not isinstance(name, str)
+                or timestamp is None
+                or pm10 is None
+                or latitude is None
+                or longitude is None
+            ):
+                continue
+            station_id = str(station_id).strip()
+            city = city.strip().rstrip(" ,")
+            name = name.strip() or city
+            if not station_id or not city:
+                continue
+            try:
+                measured_at = datetime.fromtimestamp(timestamp, UTC).isoformat()
+            except TIMESTAMP_CONVERSION_ERRORS:
+                continue
+            if timestamp <= timestamps.get(station_id, -1):
+                continue
+            stations[station_id] = {
+                "id": station_id,
+                "city": city,
+                "name": name,
+                "source": row[8] if isinstance(row[8], str) else None,
+                "latitude": latitude,
+                "longitude": longitude,
+                "measured_at": measured_at,
+                "timestamp": timestamp,
+                "pm10": pm10,
+                "pm25": _json_number(row[7]),
+            }
+            timestamps[station_id] = timestamp
+    return list(stations.values())
+
+
+async def FetchSmogCities(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[str]:
+    """List settlements with current measurements on the smog map."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+    cities = {
+        _location_match_key(station["city"]): station["city"]
+        for station in parse_smog_stations(soup)
+    }
+    return sorted(cities.values(), key=_location_match_key)
+
+
+async def FetchSmogStations(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+) -> list[dict[str, Any]]:
+    """Find smog stations whose settlement matches the weather location."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+    key = _location_match_key(location)
+    return [
+        {
+            "id": station["id"],
+            "city": station["city"],
+            "name": station["name"],
+            "source": station["source"],
+            "has_pm25": station["pm25"] is not None,
+        }
+        for station in parse_smog_stations(soup)
+        if _location_match_key(station["city"]) == key
+    ]
+
+
+async def FetchSmogData(
+    session: aiohttp.ClientSession,
+    station_ids: list[str],
+    request_headers: dict | None = None,
+) -> dict[str, dict[str, Any] | None]:
+    """Fetch selected smog station observations without failing weather updates."""
+    if not station_ids:
+        return {}
+    try:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+        observations = {station["id"]: station for station in parse_smog_stations(soup)}
+    except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+        _LOGGER.warning("Unable to fetch Időkép smog station data: %s", err)
+        return dict.fromkeys(station_ids)
+    return {station_id: observations.get(station_id) for station_id in station_ids}
+
+
+async def FetchSmogCityData(
+    session: aiohttp.ClientSession,
+    city: str,
+    request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Fetch all current smog stations for one city."""
+
+    async def fetch_stations() -> list[dict[str, Any]]:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/szmog", request_headers)
+        return parse_smog_stations(soup)
+
+    stations = await _get_map_data(map_data_cache, "smog", fetch_stations)
+    city_key = _location_match_key(city)
+    return {
+        station["id"]: station
+        for station in stations
+        if _location_match_key(station["city"]) == city_key
+    }
+
+
+def parse_pollen_locations(soup: BeautifulSoup) -> list[dict[str, Any]]:
+    """Parse qualitative pollen levels from the image-map tooltips."""
+    pollen_map = soup.find("map", attrs={"name": "pollen"})
+    if not isinstance(pollen_map, Tag):
+        raise StationDataError("Pollen map was not found")
+
+    locations = []
+    for area in pollen_map.find_all("area"):
+        onmouseover = area.get("onmouseover")
+        if not isinstance(onmouseover, str):
+            continue
+        match = re.search(r"""Tip\(\s*(["'])(.*?)\1\s*\)""", onmouseover)
+        if match is None:
+            continue
+
+        tooltip = BeautifulSoup(match.group(2), "html.parser")
+        city_element = tooltip.find("strong")
+        if city_element is None:
+            continue
+        city = city_element.get_text(strip=True)
+        values = {}
+        for font in tooltip.find_all("font"):
+            label, separator, level = font.get_text(" ", strip=True).partition(":")
+            category = POLLEN_CATEGORIES.get(label.strip())
+            if category and separator and level.strip():
+                values[category] = level.strip()
+        if city:
+            locations.append({"city": city, "values": values})
+    return locations
+
+
+async def FetchPollenCities(
+    session: aiohttp.ClientSession,
+    request_headers: dict | None = None,
+) -> list[str]:
+    """List settlements with pollen readings on the pollen map."""
+    soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
+    cities = {
+        _location_match_key(location["city"]): location["city"]
+        for location in parse_pollen_locations(soup)
+        if location["values"]
+    }
+    return sorted(cities.values(), key=_location_match_key)
+
+
+def _find_pollen_location(
+    locations: list[dict[str, Any]], location: str
+) -> dict[str, Any] | None:
+    """Find a location with actual category values; accents remain significant."""
+    key = _location_match_key(location)
+    return next(
+        (
+            pollen_location
+            for pollen_location in locations
+            if pollen_location["values"]
+            and _location_match_key(pollen_location["city"]) == key
+        ),
+        None,
+    )
+
+
+async def FetchPollenLocation(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
+) -> dict[str, Any] | None:
+    """Find pollen data for one location on the Időkép map."""
+
+    async def fetch_locations() -> list[dict[str, Any]]:
+        soup = await _fetch_page(session, f"{BASE_IDOKEP_URL}/pollen", request_headers)
+        return parse_pollen_locations(soup)
+
+    locations = await _get_map_data(map_data_cache, "pollen", fetch_locations)
+    return _find_pollen_location(locations, location)
+
+
+async def FetchPollenData(
+    session: aiohttp.ClientSession,
+    location: str,
+    request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
+) -> dict[str, str]:
+    """Fetch pollen levels; report failed requests to the pollen coordinator."""
+    try:
+        pollen_location = await FetchPollenLocation(
+            session, location, request_headers, map_data_cache
+        )
+    except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+        _LOGGER.warning("Unable to fetch Időkép pollen data for %r: %s", location, err)
+        raise UpdateFailed(
+            f"Error fetching pollen data from idokep.hu for {location!r}: {err}"
+        ) from err
+    return pollen_location["values"] if pollen_location else {}
+
+
+async def FetchStationWeatherData(
+    session: aiohttp.ClientSession,
+    measurement_point: str,
+    request_headers: dict | None = None,
+    map_data_cache: MapDataCache | None = None,
+) -> dict[str, dict[str, Any] | None]:
+    """Read available temperature, precipitation and wind data for one station."""
+    if not measurement_point.strip():
+        raise UpdateFailed("A measurement point name or ID is required")
+
+    sources = (
+        (
+            "temperature",
+            lambda: _fetch_station_temperature(session, request_headers),
+        ),
+        ("wind", lambda: _fetch_station_wind(session, request_headers)),
+        (
+            "precipitation",
+            lambda: _fetch_station_precipitation(session, request_headers),
+        ),
+    )
+
+    async def fetch_source(
+        source: str, fetch: Callable[[], Awaitable[list[list[Any]]]]
+    ) -> list[list[Any]] | None:
+        try:
+            return await _get_map_data(map_data_cache, f"station_{source}", fetch)
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            _LOGGER.warning("Unable to fetch Időkép %s station data: %s", source, err)
+            return None
+
+    results = await asyncio.gather(
+        *(fetch_source(source, fetch) for source, fetch in sources)
+    )
+    if all(result is None for result in results):
+        raise UpdateFailed("Unable to fetch any Időkép station map data")
+
+    rows_by_source: dict[str, list[list[Any]]] = {}
+    for (source, _), result in zip(sources, results, strict=True):
+        if result is not None:
+            rows_by_source[source] = result
+
+    temperature_row = _find_station(
+        rows_by_source.get("temperature", []),
+        measurement_point,
+        name_index=4,
+        id_index=6,
+        timestamp_index=3,
+    )
+    wind_row = _find_station(
+        rows_by_source.get("wind", []),
+        measurement_point,
+        name_index=6,
+        id_index=8,
+        timestamp_index=5,
+    )
+    precipitation_row = _find_station(
+        rows_by_source.get("precipitation", []),
+        measurement_point,
+        name_index=4,
+        id_index=5,
+        timestamp_index=0,
+    )
+
+    temperature = (
+        _station_observation(
+            temperature_row,
+            value_index=2,
+            timestamp_index=3,
+            latitude_index=0,
+            longitude_index=1,
+            name_index=4,
+            id_index=6,
+            source_index=5,
+        )
+        if temperature_row
+        else None
+    )
+    precipitation = (
+        _station_observation(
+            precipitation_row,
+            value_index=3,
+            timestamp_index=0,
+            latitude_index=1,
+            longitude_index=2,
+            name_index=4,
+            id_index=5,
+            extra={
+                "radar_precipitation": _json_number(precipitation_row[6])
+                if len(precipitation_row) > 6
+                else None
+            },
+        )
+        if precipitation_row
+        else None
+    )
+    wind_speed = None
+    if wind_row and len(wind_row) > 8:
+        wind_gust_value = _json_number(wind_row[4])
+        wind_speed = _station_observation(
+            wind_row,
+            value_index=3,
+            timestamp_index=5,
+            latitude_index=0,
+            longitude_index=1,
+            name_index=6,
+            id_index=8,
+            source_index=7,
+            extra={
+                "wind_direction_degrees": _json_number(wind_row[2]),
+                "wind_gust": (
+                    wind_gust_value
+                    if wind_gust_value is not None and wind_gust_value >= 0
+                    else None
+                ),
+            },
+        )
+    wind_gust = None
+    if wind_speed is not None and wind_speed["wind_gust"] is not None:
+        wind_gust = {
+            **wind_speed,
+            "value": wind_speed["wind_gust"],
+        }
+    measurements = {
+        "temperature": temperature,
+        "precipitation": precipitation,
+        "wind_speed": wind_speed,
+        "wind_gust": wind_gust,
+    }
+    if all(measurement is None for measurement in measurements.values()):
+        raise UpdateFailed(
+            f"No measurements found for Időkép station {measurement_point!r}"
+        )
+    return measurements
+
+
 # ======================= Fetch Forecast data ============================
 async def FetchWeatherData(
     session: aiohttp.ClientSession,
@@ -648,25 +1331,33 @@ async def FetchWeatherData(
     _LOGGER.debug("Fetching data for location: %s", location)
     now = datetime.now(budapest_tz)
 
-    current_page = await _fetch_page(
-        session, f"{BASE_IDOKEP_URL}/idojaras/{location}", request_headers
-    )
+    current_url = f"{BASE_IDOKEP_URL}/idojaras/{location}"
+    hourly_url = f"{BASE_IDOKEP_URL}/elorejelzes/{location}"
+    if forecast_days > DEFAULT_FORECAST_DAYS:
+        current_page, hourly_page, month_page = await asyncio.gather(
+            _fetch_page(session, current_url, request_headers),
+            _fetch_page(session, hourly_url, request_headers),
+            _fetch_optional_page(
+                session, f"{BASE_IDOKEP_URL}/30napos/{location}", request_headers
+            ),
+        )
+    else:
+        current_page, hourly_page = await asyncio.gather(
+            _fetch_page(session, current_url, request_headers),
+            _fetch_page(session, hourly_url, request_headers),
+        )
+        month_page = None
+
     resolved_location = parse_location_name(current_page)
     sunrise, sunset = _parse_sun_times(current_page, now.date(), budapest_tz)
     current = _parse_current(current_page, now, sunrise, sunset)
     daily = _parse_daily(current_page, now.date(), budapest_tz, local_tz)
 
-    hourly_page = await _fetch_page(
-        session, f"{BASE_IDOKEP_URL}/elorejelzes/{location}", request_headers
-    )
     hourly = _parse_hourly(hourly_page, now, budapest_tz, local_tz, sunrise, sunset)
     alerts = _parse_alerts(current_page, hourly_page)
     hazards = _parse_hazards(current_page)
 
-    if forecast_days > DEFAULT_FORECAST_DAYS:
-        month_page = await _fetch_page(
-            session, f"{BASE_IDOKEP_URL}/30napos/{location}", request_headers
-        )
+    if month_page is not None:
         # Keep the 15 days if the 30-day page can't be read.
         daily = _parse_daily(month_page, now.date(), budapest_tz, local_tz) or daily
 
@@ -683,6 +1374,10 @@ async def FetchWeatherData(
         ATTR_API_CURRENT: current,
         ATTR_API_HOURLY_FORECAST: hourly,
         ATTR_API_DAILY_FORECAST: daily,
+        ATTR_API_STATION_SENSORS: {},
+        ATTR_API_SMOG_SENSORS: {},
+        ATTR_API_POLLEN_SENSORS: {},
+        ATTR_API_POLLEN_LOCATION: None,
     }
 
 
@@ -744,7 +1439,7 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 self.local_tz,
                 self.budapest_tz,
                 self.request_headers,
-                self.config_entry.options.get(
+                forecast_days=self.config_entry.options.get(
                     CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
                 ),
             )
@@ -765,3 +1460,113 @@ class WeatherUpdateCoordinator(DataUpdateCoordinator):
                 resolved,
             )
         return data
+
+
+class StationUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch map measurements for one independently configured station."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize coordinator."""
+        self._measurement_point = entry.data[CONF_MEASUREMENT_POINT]
+        self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} station {entry.data[CONF_STATION_NAME]}",
+            update_interval=timedelta(
+                minutes=entry.options.get(
+                    CONF_STATION_UPDATE_INTERVAL, DEFAULT_STATION_UPDATE_INTERVAL
+                )
+            ),
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update measurements from the Időkép map."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        try:
+            measurements = await FetchStationWeatherData(
+                async_get_clientsession(self.hass),
+                self._measurement_point,
+                self.request_headers,
+                self.map_data_cache,
+            )
+        except (aiohttp.ClientError, TimeoutError, UpdateFailed) as err:
+            raise UpdateFailed(
+                f"Error fetching station data from idokep.hu: {err}"
+            ) from err
+        return {ATTR_API_STATION_SENSORS: measurements}
+
+
+class SmogUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch smog readings for a separately configured city."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the smog coordinator."""
+        self._city = entry.data[CONF_SMOG_CITY]
+        self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} smog {self._city}",
+            update_interval=WEATHER_UPDATE_INTERVAL,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update the selected city's smog measurements."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        try:
+            stations = await FetchSmogCityData(
+                async_get_clientsession(self.hass),
+                self._city,
+                self.request_headers,
+                self.map_data_cache,
+            )
+        except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
+            raise UpdateFailed(
+                f"Error fetching smog data from idokep.hu: {err}"
+            ) from err
+        return {ATTR_API_SMOG_SENSORS: stations}
+
+
+class PollenUpdateCoordinator(DataUpdateCoordinator):
+    """Fetch pollen readings for a separately configured city."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the pollen coordinator."""
+        self._city = entry.data[CONF_POLLEN_CITY]
+        self.request_headers: dict[str, str] | None = None
+        self.map_data_cache = get_map_data_cache(hass)
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} pollen {self._city}",
+            update_interval=WEATHER_UPDATE_INTERVAL,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update the selected city's pollen measurements."""
+        if self.request_headers is None:
+            self.request_headers = await async_request_headers(self.hass)
+        values = await FetchPollenData(
+            async_get_clientsession(self.hass),
+            self._city,
+            self.request_headers,
+            self.map_data_cache,
+        )
+        return {
+            ATTR_API_POLLEN_SENSORS: values,
+            ATTR_API_POLLEN_LOCATION: self._city,
+        }

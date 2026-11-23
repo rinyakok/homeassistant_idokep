@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import pytest
 from bs4 import BeautifulSoup
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -356,6 +358,32 @@ async def test_30_day_forecast(freezer) -> None:
     assert session.requested[-1] == "https://www.idokep.hu/30napos/Érd"
 
 
+async def test_weather_pages_are_downloaded_concurrently(freezer, monkeypatch) -> None:
+    """Current, hourly and optional monthly pages are fetched concurrently."""
+    freezer.move_to(FIXTURE_TIME)
+    original_fetch_page = coordinator._fetch_page
+    active_requests = 0
+    max_active_requests = 0
+
+    async def delayed_fetch_page(session, url, request_headers):
+        nonlocal active_requests, max_active_requests
+        active_requests += 1
+        max_active_requests = max(max_active_requests, active_requests)
+        try:
+            await asyncio.sleep(0)
+            return await original_fetch_page(session, url, request_headers)
+        finally:
+            active_requests -= 1
+
+    monkeypatch.setattr(coordinator, "_fetch_page", delayed_fetch_page)
+    data = await FetchWeatherData(
+        FakeClientSession(), "Érd", BUDAPEST, BUDAPEST, None, 30
+    )
+
+    assert len(data["daily_forecast"]) == 30
+    assert max_active_requests == 3
+
+
 async def test_30_day_page_broken_keeps_15_days(freezer) -> None:
     """If the 30-day page can't be read, the 15-day forecast is kept."""
     freezer.move_to(FIXTURE_TIME)
@@ -368,6 +396,24 @@ async def test_30_day_page_broken_keeps_15_days(freezer) -> None:
     )
 
     data = await FetchWeatherData(session, "Érd", BUDAPEST, BUDAPEST, None, 30)
+
+    assert len(data["daily_forecast"]) == 15
+
+
+async def test_30_day_network_error_keeps_15_days(freezer, monkeypatch) -> None:
+    """A failed 30-day request does not discard the default forecast."""
+    freezer.move_to(FIXTURE_TIME)
+    original_fetch_page = coordinator._fetch_page
+
+    async def fail_month_page(session, url, request_headers):
+        if "/30napos/" in url:
+            raise aiohttp.ClientConnectionError("offline")
+        return await original_fetch_page(session, url, request_headers)
+
+    monkeypatch.setattr(coordinator, "_fetch_page", fail_month_page)
+    data = await FetchWeatherData(
+        FakeClientSession(), "Érd", BUDAPEST, BUDAPEST, None, 30
+    )
 
     assert len(data["daily_forecast"]) == 15
 
