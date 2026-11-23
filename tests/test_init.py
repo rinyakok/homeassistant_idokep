@@ -400,6 +400,28 @@ async def test_pollen_city_entry_creates_independent_sensors(
     assert hass.states.get(grass_id).attributes["location"] == "Érd"
 
 
+async def test_pollen_update_failure_marks_sensors_unavailable(
+    hass: HomeAssistant, fake_idokep
+) -> None:
+    """A failed pollen request is reflected by coordinator/entity availability."""
+    fake_idokep.pages["/pollen"] = _pollen_map_page()
+    result = await _start_city_flow(hass, "pollen", "Érd")
+    entry = result["result"]
+    await hass.async_block_till_done()
+
+    coordinator = get_pollen_data(hass, entry).coordinator
+    fake_idokep.error = aiohttp.ClientConnectionError("no network")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    grass_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_pollen_grass"
+    )
+    assert coordinator.last_update_success is False
+    assert hass.states.get(grass_id).state == "unavailable"
+
+
 async def test_empty_city_selection_does_not_create_entry_or_start_polling(
     hass: HomeAssistant, fake_idokep
 ) -> None:

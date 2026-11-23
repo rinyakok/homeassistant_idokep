@@ -256,6 +256,23 @@ async def test_pollen_data_returns_only_qualitative_levels() -> None:
     assert data == {"grass": "alacsony", "ragweed": "nincs"}
 
 
+async def test_pollen_data_fails_when_map_is_unavailable() -> None:
+    """Network failures are surfaced to the pollen coordinator."""
+    session = FakeClientSession({"/pollen": _pollen_page()})
+    session.error = aiohttp.ClientConnectionError("offline")
+
+    with pytest.raises(UpdateFailed, match="Error fetching pollen data"):
+        await FetchPollenData(session, "Érd")
+
+
+async def test_pollen_data_fails_when_map_pattern_is_missing() -> None:
+    """An unrecognized pollen page is not returned as an empty successful update."""
+    session = FakeClientSession({"/pollen": "<html><body>Changed</body></html>"})
+
+    with pytest.raises(UpdateFailed, match="Pollen map was not found"):
+        await FetchPollenData(session, "Érd")
+
+
 async def test_pollen_map_data_is_shared_between_cities() -> None:
     """Pollen city entries reuse the parsed location map."""
     session = FakeClientSession({"/pollen": _pollen_page()})
