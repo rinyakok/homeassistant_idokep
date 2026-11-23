@@ -22,6 +22,34 @@ CONF_FORECAST_DAYS = "forecast_days"
 DEFAULT_FORECAST_DAYS = 15
 FORECAST_DAYS_CHOICES = (15, 30)
 
+# Separate config entry for one map station.
+CONF_STATION_CONFIG_ENTRY = "station_config_entry"
+CONF_MEASUREMENT_POINT = "measurement_point"
+CONF_STATION_NAME = "station_name"
+CONF_STATION_UPDATE_INTERVAL = "station_update_interval"
+DEFAULT_STATION_UPDATE_INTERVAL = 20
+STATION_UPDATE_INTERVAL_CHOICES = tuple(range(5, 61, 5))
+CONF_SMOG_CONFIG_ENTRY = "smog_config_entry"
+CONF_SMOG_CITY = "smog_city"
+CONF_POLLEN_CONFIG_ENTRY = "pollen_config_entry"
+CONF_POLLEN_CITY = "pollen_city"
+CONF_RADAR_CONFIG_ENTRY = "radar_config_entry"
+RADAR_CONFIG_ENTRY_TITLE = "Időkép radar"
+RADAR_CONFIG_ENTRY_UNIQUE_ID = "idokep-radar"
+RADAR_IMAGE_UNIQUE_ID = "radar-latest-image"
+RADAR_CAMERA_UNIQUE_ID = "radar-image-stream"
+
+POLLEN_CATEGORIES = {
+    "Pázsitfűfélék": "grass",
+    "Útifű": "plantain",
+    "Csalánfélék": "nettle",
+    "Kenderfélék": "hemp",
+    "Libatopfélék": "goosefoot",
+    "Parlagfű": "ragweed",
+    "Üröm": "mugwort",
+    "Gombák": "mold",
+}
+
 # Version 1 of this integration (before multiple locations).
 LEGACY_CONF_LOCATION = "location_name"
 LEGACY_UNIQUE_ID = "IdokepWeatherUID"
@@ -40,7 +68,15 @@ ATTR_API_SUNSET = "sunset"
 ATTR_API_CURRENT = "current"
 ATTR_API_HOURLY_FORECAST = "hourly_forecast"
 ATTR_API_DAILY_FORECAST = "daily_forecast"
+ATTR_API_STATION_SENSORS = "station_sensors"
+ATTR_API_SMOG_SENSORS = "smog_sensors"
+ATTR_API_POLLEN_SENSORS = "pollen_sensors"
+ATTR_API_POLLEN_LOCATION = "pollen_location"
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.WEATHER]
+STATION_PLATFORMS = [Platform.SENSOR]
+SMOG_PLATFORMS = [Platform.SENSOR]
+POLLEN_PLATFORMS = [Platform.SENSOR]
+RADAR_PLATFORMS = [Platform.IMAGE, Platform.CAMERA]
 BASE_IDOKEP_URL = "https://www.idokep.hu"
 USER_AGENT_TEMPLATE = (
     "HomeAssistant-idokep/{integration_version} "
@@ -57,3 +93,8 @@ def entry_unique_id(location: str) -> str:
 def weather_unique_id(entry_id: str, location: str) -> str:
     """Return the weather entity unique ID (same format as HA-Idokep)."""
     return f"{entry_id}_weather_{slugify(location)}"
+
+
+def station_entry_unique_id(station_id: str) -> str:
+    """Return a unique config entry ID for one map station."""
+    return f"station-{slugify(station_id, separator='-')}"

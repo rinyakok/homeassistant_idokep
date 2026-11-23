@@ -2,6 +2,16 @@
   "config": {
     "step": {
       "user": {
+        "title": "Add an Időkép data source",
+        "menu_options": {
+          "location": "Weather location",
+          "station": "Map station sensors",
+          "smog": "Smog sensors",
+          "pollen": "Pollen sensors",
+          "radar": "Radar image and stream"
+        }
+      },
+      "location": {
         "title": "Add an Időkép location",
         "description": "Type the name of a Hungarian place as it is written on idokep.hu, for example Érd or Balatonfüred.",
         "data": {
@@ -9,6 +19,36 @@
         },
         "data_description": {
           "location": "Settlement name. Accents are optional: \"erd\" works for Érd."
+        }
+      },
+      "station": {
+        "title": "Add a map station",
+        "description": "Choose an available station from the dropdown. Each station is added as a separate device.",
+        "data": {
+          "measurement_point": "Station"
+        },
+        "data_description": {
+          "measurement_point": "The list is populated from the available Időkép map stations."
+        }
+      },
+      "smog": {
+        "title": "Add smog sensors",
+        "description": "Choose a city available on the Időkép smog map. Leave the field empty to cancel.",
+        "data": {
+          "smog_city": "City"
+        },
+        "data_description": {
+          "smog_city": "The selected city's smog stations will be added as sensors."
+        }
+      },
+      "pollen": {
+        "title": "Add pollen sensors",
+        "description": "Choose a city available on the Időkép pollen map. Leave the field empty to cancel.",
+        "data": {
+          "pollen_city": "City"
+        },
+        "data_description": {
+          "pollen_city": "The selected city's pollen levels will be added as sensors."
         }
       },
       "reconfigure": {
@@ -25,11 +65,22 @@
     "error": {
       "cannot_connect": "Could not connect to idokep.hu. Try again later.",
       "location_not_found": "No weather data found on idokep.hu for this location.",
-      "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling."
+      "location_fallback": "idokep.hu does not know this place and shows {shown} instead. Check the spelling.",
+      "station_required": "Select a station from the list."
     },
     "abort": {
-      "already_configured": "This location is already added.",
-      "reconfigure_successful": "The location was changed."
+      "already_configured": "This data source is already added.",
+      "reconfigure_successful": "The location was changed.",
+      "not_supported": "This configuration is managed automatically.",
+      "radar_no_options": "The global radar entry has no options.",
+      "sensor_no_options": "This sensor entry has no configurable options.",
+      "map_unavailable": "Could not load the Időkép map. Try again later.",
+      "no_smog_cities": "No cities with smog measurements were found.",
+      "no_pollen_cities": "No cities with pollen measurements were found.",
+      "city_not_selected": "No city was selected, so no sensor entry was added.",
+      "city_not_available": "The selected city is no longer available on the map.",
+      "no_stations": "No stations were found on the Időkép maps.",
+      "station_not_available": "The selected station is no longer available on the maps."
     }
   },
   "entity": {
@@ -54,6 +105,42 @@
       },
       "warning_forecast": {
         "name": "Warning forecast"
+      },
+      "station_temperature": {
+        "name": "Station temperature"
+      },
+      "station_precipitation": {
+        "name": "Station precipitation (24 h)"
+      },
+      "station_wind_speed": {
+        "name": "Station wind speed"
+      },
+      "station_wind_gust": {
+        "name": "Station wind gust"
+      },
+      "pollen_grass": {
+        "name": "Grass pollen"
+      },
+      "pollen_plantain": {
+        "name": "Plantain pollen"
+      },
+      "pollen_nettle": {
+        "name": "Nettle pollen"
+      },
+      "pollen_hemp": {
+        "name": "Hemp pollen"
+      },
+      "pollen_goosefoot": {
+        "name": "Goosefoot pollen"
+      },
+      "pollen_ragweed": {
+        "name": "Ragweed pollen"
+      },
+      "pollen_mugwort": {
+        "name": "Mugwort pollen"
+      },
+      "pollen_mold": {
+        "name": "Mold spores"
       }
     },
     "binary_sensor": {
@@ -75,15 +162,32 @@
       "alert_red": {
         "name": "Red alert"
       }
+    },
+    "image": {
+      "latest_radar_image": {
+        "name": "Latest radar image"
+      }
+    },
+    "camera": {
+      "radar_image_stream": {
+        "name": "Radar image stream"
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Időkép options",
-        "description": "The 30-day forecast needs one more download from idokep.hu per update.",
+        "description": "The 30-day forecast needs one more download from idokep.hu per update. Add map stations, smog sensors and pollen sensors as separate Időkép entries.",
         "data": {
           "forecast_days": "Daily forecast"
+        }
+      },
+      "station": {
+        "title": "Map station options",
+        "description": "Set how often this station's measurements are refreshed. This interval is independent for each station.",
+        "data": {
+          "station_update_interval": "Update interval"
         }
       }
     }
@@ -93,6 +197,22 @@
       "options": {
         "15": "15 days",
         "30": "30 days"
+      }
+    },
+    "station_update_interval": {
+      "options": {
+        "5": "5 minutes",
+        "10": "10 minutes",
+        "15": "15 minutes",
+        "20": "20 minutes",
+        "25": "25 minutes",
+        "30": "30 minutes",
+        "35": "35 minutes",
+        "40": "40 minutes",
+        "45": "45 minutes",
+        "50": "50 minutes",
+        "55": "55 minutes",
+        "60": "1 hour"
       }
     }
   }

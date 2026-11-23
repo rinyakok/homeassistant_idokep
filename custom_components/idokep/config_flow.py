@@ -29,14 +29,36 @@ from .const import (
     ATTR_API_LOCATION,
     CONF_FORECAST_DAYS,
     CONF_LOCATION,
+    CONF_MEASUREMENT_POINT,
+    CONF_POLLEN_CITY,
+    CONF_POLLEN_CONFIG_ENTRY,
+    CONF_RADAR_CONFIG_ENTRY,
+    CONF_SMOG_CITY,
+    CONF_SMOG_CONFIG_ENTRY,
+    CONF_STATION_CONFIG_ENTRY,
+    CONF_STATION_NAME,
+    CONF_STATION_UPDATE_INTERVAL,
     CONFIG_FLOW_VERSION,
     DEFAULT_FORECAST_DAYS,
+    DEFAULT_STATION_UPDATE_INTERVAL,
     DOMAIN,
     FORECAST_DAYS_CHOICES,
+    RADAR_CONFIG_ENTRY_TITLE,
+    RADAR_CONFIG_ENTRY_UNIQUE_ID,
+    STATION_UPDATE_INTERVAL_CHOICES,
     entry_unique_id,
+    station_entry_unique_id,
     weather_unique_id,
 )
-from .coordinator import BUDAPEST_TZ_NAME, FetchWeatherData, async_request_headers
+from .coordinator import (
+    BUDAPEST_TZ_NAME,
+    FetchPollenCities,
+    FetchSmogCities,
+    FetchStationChoices,
+    FetchWeatherData,
+    StationDataError,
+    async_request_headers,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,10 +106,65 @@ def _schema(default: str | None = None) -> vol.Schema:
     )
 
 
+def _station_option(station: dict[str, str]) -> str:
+    """Return a user-visible station option with its ID for disambiguation."""
+    return f"{station['name']} ({station['id']})"
+
+
+def _station_schema(stations: list[dict[str, str]]) -> vol.Schema:
+    """Return a dropdown populated with available map stations."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_MEASUREMENT_POINT): SelectSelector(
+                SelectSelectorConfig(
+                    options=[_station_option(station) for station in stations],
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
+def _city_schema(city_key: str, cities: list[str]) -> vol.Schema:
+    """Return an optional city selector populated with available map data."""
+    return vol.Schema(
+        {
+            vol.Optional(city_key): SelectSelector(
+                SelectSelectorConfig(
+                    options=cities,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
 class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Idokep: one entry per location."""
 
     VERSION = CONFIG_FLOW_VERSION
+
+    async def async_step_import(self, user_input: dict[str, Any]) -> ConfigFlowResult:
+        """Create the integration's single global radar entry."""
+        if not user_input.get(CONF_RADAR_CONFIG_ENTRY):
+            return self.async_abort(reason="not_supported")
+        await self.async_set_unique_id(RADAR_CONFIG_ENTRY_UNIQUE_ID)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=RADAR_CONFIG_ENTRY_TITLE,
+            data={CONF_RADAR_CONFIG_ENTRY: True},
+        )
+
+    async def async_step_radar(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add the single global radar image and stream entry."""
+        await self.async_set_unique_id(RADAR_CONFIG_ENTRY_UNIQUE_ID)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=RADAR_CONFIG_ENTRY_TITLE,
+            data={CONF_RADAR_CONFIG_ENTRY: True},
+        )
 
     @staticmethod
     @callback
@@ -98,7 +175,7 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_check(
         self, user_input: dict[str, Any]
     ) -> tuple[str | None, dict[str, str], dict[str, str]]:
-        """Validate the typed location; return (name, errors, placeholders)."""
+        """Validate the location."""
         try:
             name = await async_validate_location(
                 self.hass, user_input[CONF_LOCATION].strip()
@@ -112,7 +189,19 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Add a location."""
+        """Choose the kind of Időkép entry to add."""
+        menu_options = ["location", "station", "smog", "pollen"]
+        if not any(
+            entry.unique_id == RADAR_CONFIG_ENTRY_UNIQUE_ID
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        ):
+            menu_options.append("radar")
+        return self.async_show_menu(step_id="user", menu_options=menu_options)
+
+    async def async_step_location(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add a weather location."""
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
         if user_input is not None:
@@ -120,13 +209,151 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
             if name is not None:
                 await self.async_set_unique_id(entry_unique_id(name))
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=name, data={CONF_LOCATION: name})
+                return self.async_create_entry(
+                    title=name,
+                    data={CONF_LOCATION: name},
+                )
 
         return self.async_show_form(
-            step_id="user",
+            step_id="location",
             data_schema=_schema((user_input or {}).get(CONF_LOCATION)),
             errors=errors,
             description_placeholders=placeholders,
+        )
+
+    async def async_step_station(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add one map station as an independent config entry."""
+        if user_input is None:
+            try:
+                stations = await FetchStationChoices(
+                    async_get_clientsession(self.hass),
+                    await async_request_headers(self.hass),
+                )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép map stations: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not stations:
+                return self.async_abort(reason="no_stations")
+            self._available_stations = stations
+            return self.async_show_form(
+                step_id="station",
+                data_schema=_station_schema(stations),
+            )
+
+        station_id = user_input.get(CONF_MEASUREMENT_POINT)
+        if not isinstance(station_id, str) or not station_id.strip():
+            return self.async_show_form(
+                step_id="station",
+                data_schema=_station_schema(getattr(self, "_available_stations", [])),
+                errors={"base": "station_required"},
+            )
+        station = next(
+            (
+                station
+                for station in getattr(self, "_available_stations", [])
+                if _station_option(station) == station_id
+            ),
+            None,
+        )
+        if station is None:
+            return self.async_abort(reason="station_not_available")
+
+        station_id = station["id"]
+        await self.async_set_unique_id(station_entry_unique_id(station_id))
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=station["name"],
+            data={
+                CONF_STATION_CONFIG_ENTRY: True,
+                CONF_MEASUREMENT_POINT: station_id,
+                CONF_STATION_NAME: station["name"],
+            },
+        )
+
+    async def async_step_smog(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add a separate smog entry for a selected city."""
+        if user_input is None:
+            try:
+                cities = await FetchSmogCities(
+                    async_get_clientsession(self.hass),
+                    await async_request_headers(self.hass),
+                )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                UpdateFailed,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép smog cities: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not cities:
+                return self.async_abort(reason="no_smog_cities")
+            self._available_smog_cities = cities
+            return self.async_show_form(
+                step_id="smog",
+                data_schema=_city_schema(CONF_SMOG_CITY, cities),
+            )
+
+        city = user_input.get(CONF_SMOG_CITY)
+        if not isinstance(city, str) or not city.strip():
+            return self.async_abort(reason="city_not_selected")
+        city = city.strip()
+        if city not in getattr(self, "_available_smog_cities", []):
+            return self.async_abort(reason="city_not_available")
+
+        await self.async_set_unique_id(f"smog-{entry_unique_id(city)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=f"Időkép szmog - {city}",
+            data={CONF_SMOG_CONFIG_ENTRY: True, CONF_SMOG_CITY: city},
+        )
+
+    async def async_step_pollen(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Add a separate pollen entry for a selected city."""
+        if user_input is None:
+            try:
+                cities = await FetchPollenCities(
+                    async_get_clientsession(self.hass),
+                    await async_request_headers(self.hass),
+                )
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                UpdateFailed,
+                StationDataError,
+            ) as err:
+                _LOGGER.warning("Unable to load Időkép pollen cities: %s", err)
+                return self.async_abort(reason="map_unavailable")
+            if not cities:
+                return self.async_abort(reason="no_pollen_cities")
+            self._available_pollen_cities = cities
+            return self.async_show_form(
+                step_id="pollen",
+                data_schema=_city_schema(CONF_POLLEN_CITY, cities),
+            )
+
+        city = user_input.get(CONF_POLLEN_CITY)
+        if not isinstance(city, str) or not city.strip():
+            return self.async_abort(reason="city_not_selected")
+        city = city.strip()
+        if city not in getattr(self, "_available_pollen_cities", []):
+            return self.async_abort(reason="city_not_available")
+
+        await self.async_set_unique_id(f"pollen-{entry_unique_id(city)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=f"Időkép pollen - {city}",
+            data={CONF_POLLEN_CONFIG_ENTRY: True, CONF_POLLEN_CITY: city},
         )
 
     async def async_step_reconfigure(
@@ -134,6 +361,13 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Change the location of an existing entry."""
         entry = self._get_reconfigure_entry()
+        if (
+            entry.data.get(CONF_RADAR_CONFIG_ENTRY)
+            or entry.data.get(CONF_STATION_CONFIG_ENTRY)
+            or entry.data.get(CONF_SMOG_CONFIG_ENTRY)
+            or entry.data.get(CONF_POLLEN_CONFIG_ENTRY)
+        ):
+            return self.async_abort(reason="not_supported")
         old_location: str = entry.data[CONF_LOCATION]
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
@@ -177,33 +411,82 @@ class IdokepConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class IdokepOptionsFlow(OptionsFlow):
-    """Options of one location: the length of the daily forecast."""
+    """Options of one location."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose 15 or 30 days."""
+        """Choose the forecast length or station refresh interval."""
+        if self.config_entry.data.get(CONF_STATION_CONFIG_ENTRY):
+            return await self.async_step_station(user_input)
+        if self.config_entry.data.get(
+            CONF_SMOG_CONFIG_ENTRY
+        ) or self.config_entry.data.get(CONF_POLLEN_CONFIG_ENTRY):
+            return self.async_abort(reason="sensor_no_options")
+        if self.config_entry.data.get(CONF_RADAR_CONFIG_ENTRY):
+            return self.async_abort(reason="radar_no_options")
         if user_input is not None:
-            return self.async_create_entry(
-                data={CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
-            )
+            options = {CONF_FORECAST_DAYS: int(user_input[CONF_FORECAST_DAYS])}
+            return self.async_create_entry(data=options)
 
-        current = self.config_entry.options.get(
-            CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
-        )
         return self.async_show_form(
             step_id="init",
+            data_schema=self._options_schema(),
+        )
+
+    async def async_step_station(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure the refresh interval for one map station."""
+        if user_input is not None:
+            return self.async_create_entry(
+                data={
+                    CONF_STATION_UPDATE_INTERVAL: int(
+                        user_input[CONF_STATION_UPDATE_INTERVAL]
+                    )
+                }
+            )
+
+        interval = self.config_entry.options.get(
+            CONF_STATION_UPDATE_INTERVAL, DEFAULT_STATION_UPDATE_INTERVAL
+        )
+        return self.async_show_form(
+            step_id="station",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
-                        SelectSelector(
-                            SelectSelectorConfig(
-                                options=[str(d) for d in FORECAST_DAYS_CHOICES],
-                                mode=SelectSelectorMode.LIST,
-                                translation_key=CONF_FORECAST_DAYS,
-                            )
+                    vol.Required(
+                        CONF_STATION_UPDATE_INTERVAL, default=str(interval)
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                str(minutes)
+                                for minutes in STATION_UPDATE_INTERVAL_CHOICES
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                            translation_key=CONF_STATION_UPDATE_INTERVAL,
                         )
                     )
                 }
             ),
+        )
+
+    def _options_schema(self, user_input: dict[str, Any] | None = None) -> vol.Schema:
+        """Build the options form with the saved values as defaults."""
+        current = self.config_entry.options.get(
+            CONF_FORECAST_DAYS, DEFAULT_FORECAST_DAYS
+        )
+        if user_input is not None:
+            current = int(user_input.get(CONF_FORECAST_DAYS, current))
+        return vol.Schema(
+            {
+                vol.Required(CONF_FORECAST_DAYS, default=str(current)): (
+                    SelectSelector(
+                        SelectSelectorConfig(
+                            options=[str(d) for d in FORECAST_DAYS_CHOICES],
+                            mode=SelectSelectorMode.LIST,
+                            translation_key=CONF_FORECAST_DAYS,
+                        )
+                    )
+                ),
+            }
         )
