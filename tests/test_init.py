@@ -410,7 +410,7 @@ async def test_pollen_update_failure_marks_sensors_unavailable(
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data.coordinator
-    freezer.move_to(FIXTURE_TIME + timedelta(minutes=2))
+    freezer.tick(delta=timedelta(minutes=2))
     fake_idokep.error = aiohttp.ClientConnectionError("no network")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
