@@ -1162,14 +1162,16 @@ async def FetchPollenData(
     request_headers: dict | None = None,
     map_data_cache: MapDataCache | None = None,
 ) -> dict[str, str]:
-    """Fetch qualitative pollen levels without failing weather updates."""
+    """Fetch pollen levels; report failed requests to the pollen coordinator."""
     try:
         pollen_location = await FetchPollenLocation(
             session, location, request_headers, map_data_cache
         )
     except (aiohttp.ClientError, TimeoutError, StationDataError) as err:
         _LOGGER.warning("Unable to fetch Időkép pollen data for %r: %s", location, err)
-        return {}
+        raise UpdateFailed(
+            f"Error fetching pollen data from idokep.hu for {location!r}: {err}"
+        ) from err
     return pollen_location["values"] if pollen_location else {}
 
 
