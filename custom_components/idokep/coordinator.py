@@ -1207,6 +1207,9 @@ async def FetchStationWeatherData(
     results = await asyncio.gather(
         *(fetch_source(source, fetch) for source, fetch in sources)
     )
+    if all(result is None for result in results):
+        raise UpdateFailed("Unable to fetch any Időkép station map data")
+
     rows_by_source: dict[str, list[list[Any]]] = {}
     for (source, _), result in zip(sources, results, strict=True):
         if result is not None:
@@ -1293,12 +1296,17 @@ async def FetchStationWeatherData(
             **wind_speed,
             "value": wind_speed["wind_gust"],
         }
-    return {
+    measurements = {
         "temperature": temperature,
         "precipitation": precipitation,
         "wind_speed": wind_speed,
         "wind_gust": wind_gust,
     }
+    if all(measurement is None for measurement in measurements.values()):
+        raise UpdateFailed(
+            f"No measurements found for Időkép station {measurement_point!r}"
+        )
+    return measurements
 
 
 # ======================= Fetch Forecast data ============================

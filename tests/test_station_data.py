@@ -5,6 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 
+import aiohttp
+import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
+
 from custom_components.idokep.coordinator import (
     FetchPollenCities,
     FetchPollenData,
@@ -72,6 +76,21 @@ async def test_station_data_matches_identifier() -> None:
     assert data["wind_speed"]["wind_direction_degrees"] == 180
     assert data["wind_gust"]["value"] == 6
     assert data["wind_gust"]["measured_at"] == "2026-11-20T18:22:01+00:00"
+
+
+async def test_station_data_fails_when_all_maps_are_unavailable() -> None:
+    """An update with no usable map data is reported as failed."""
+    session = _session()
+    session.error = aiohttp.ClientConnectionError("offline")
+
+    with pytest.raises(UpdateFailed, match="Unable to fetch any"):
+        await FetchStationWeatherData(session, "station-7")
+
+
+async def test_station_data_fails_when_station_is_missing_from_all_maps() -> None:
+    """A configured station absent from all maps is not a successful empty update."""
+    with pytest.raises(UpdateFailed, match="No measurements found"):
+        await FetchStationWeatherData(_session(), "missing-station")
 
 
 async def test_station_map_data_is_shared_between_measurement_points() -> None:
