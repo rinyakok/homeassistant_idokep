@@ -401,7 +401,7 @@ async def test_pollen_city_entry_creates_independent_sensors(
 
 
 async def test_pollen_update_failure_marks_sensors_unavailable(
-    hass: HomeAssistant, fake_idokep
+    hass: HomeAssistant, fake_idokep, freezer
 ) -> None:
     """A failed pollen request is reflected by coordinator/entity availability."""
     fake_idokep.pages["/pollen"] = _pollen_map_page()
@@ -410,6 +410,7 @@ async def test_pollen_update_failure_marks_sensors_unavailable(
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data.coordinator
+    freezer.move_to(FIXTURE_TIME + timedelta(minutes=2))
     fake_idokep.error = aiohttp.ClientConnectionError("no network")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
